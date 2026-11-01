@@ -4,9 +4,49 @@ __pycache__/
 .pytest_cache/
 .env
 .env.*
+!.env.example
 # Local working files, not published
 CLAUDE.md
 .claude/
 *.docx
 .DS_Store
 docs/HANDOFF.md
+notes_ja/
+
+# Keys, certificates and secret stores
+*.pem
+*.key
+*.p12
+*.keystore
+id_rsa*
+secrets/
+keystore/
+wallet.json
+wallet*.keystore
+*.secret
+.streamlit/secrets.toml
+
+# Python / tooling caches
+.ipynb_checkpoints/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Temporary files under results/ (summary CSVs and figures are kept)
+results/tmp/
+results/**/*.tmp
+results/**/*.log
+
+# Editors, OS and local-only files
+.vscode/
+.idea/
+Thumbs.db
+*.local
+*.bak
+
+# Personal to-do notes (never published)
+To do for Noa*
+
+# Local checklist for publishing (not published)
+docs/DO_NOT_COMMIT.md
