@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+.env.*
+# Local working files, not published
+CLAUDE.md
+.claude/
+*.docx
+.DS_Store
+docs/HANDOFF.md

@@ -1,0 +1,6 @@
+{
+  "count": 100,
+  "fx_rate": 150.0,
+  "seed": 42,
+  "generator": "src/transactions.py"
+}
