@@ -1,6 +1,6 @@
 # Research Question
 
-Status: Day 2 draft (2026-11-01). Hypotheses are listed for testing only. They will be finalized on Day 3 (see `hypotheses.md`, not yet written).
+Status: Day 3 update (2026-11-01). Hypotheses are things to test, not conclusions. Decision rules (supported / not supported / inconclusive) are fixed in `hypotheses.md` before any experiment.
 
 ## Central question
 
@@ -22,10 +22,10 @@ Metrics (defined in the methodology): principal exposure, success rate, partial 
 
 ## Hypotheses to be tested (not conclusions)
 
-- H1 (to be tested): When the same synthetic transactions and the same injected second-leg failures are run through all three models, do principal exposure and partial-settlement counts differ between Model C and Models A and B, and by how much?
-- H2 (to be tested): How much gross prefunding and peak-liquidity proxy do Models B and C need compared with Model A, and how does this change as initial liquidity changes?
-- H3: Changes in transaction count, number of banks, and arrival pattern change the relation between funding demand and success rate.
-- H4: Stress conditions (liquidity shortage, delay) affect the three models differently.
+- H1 (to be tested): Model C commits both legs or neither, so its partial count and principal exposure are zero by design (a correctness test, not evidence). The open questions are how principal exposure in Models A and B responds to injected second-leg failures, and under which conditions B differs from A.
+- H2 (to be tested): How do gross prefunding and the peak-liquidity proxy of Models B and C compare with Model A, and how do they change as initial liquidity changes? Part of the answer follows from the metric definitions, and C versus A may turn out equal.
+- H3 (to be tested): Do transaction volume, number of banks, and arrival pattern change the lowest initial-liquidity level at which the success rate reaches a stated target?
+- H4 (to be tested): Do liquidity stress and delay change success rate and duration-weighted exposure differently across the three models?
 
 These statements are open questions. No experiment has been run. Each will be recorded as supported, not supported, or inconclusive, using only numbers from `results/*.csv`.
 

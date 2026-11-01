@@ -32,3 +32,25 @@
 - 完了: `notes_ja/day02.md`（個人用・非公開。用語のたとえ話、ファイルの役割、確認クイズ 3 問つき）。
 - 環境: ユーザーが `brew install poppler` を実施。`pdftotext`（`/opt/homebrew/bin/pdftotext`）を確認済み。PDF はまだ読んでいないので、UNVERIFIED の項目は変更なし（読んだら `sources.md` を更新する）。
 - 次の日（Day 3）: H1〜H4 を確定し、`research/hypotheses.md`・`research/methodology.md` の初版を作る。余裕があれば poppler で Agorá 報告書・BCBS 付録などの PDF を読み、`sources.md` の UNVERIFIED を減らす。
+
+## Day 3 — hypotheses and methodology (first draft)
+- 完了: `research/hypotheses.md`（H1〜H4。冒頭に「仮説は検証対象であり結論ではない」を明記。各仮説に Supported if / Not supported if / Inconclusive if。実験前に判定ルールを固定）と `research/methodology.md`（3 モデル定義、指標の分母・分子、Exp1〜4 設計、除外範囲、未決事項）。数値はすべて (DV)＝設計値で、結果は書いていない。
+- 完了: `integrity-checker` を 2 回実施。1 回目の重大指摘（Exp4 で B と A が設計上同一／H1a・H2 が定義由来／H3・H4 の判定が緩い／遅延が exposure に効かない）を修正。2 回目の指摘（範囲ルールが厳しすぎる、「同一値」の優先順位、H3 の書き方）も修正:
+  - 判定は「同一シード内の差（paired）」を主にし、同一値の判定を先に行う。範囲は併記。
+  - H1a（失敗確率が上がっても exposure が減らない）は設計上かならず成り立つので、必須テストに降ろした（判定対象外）。
+  - H1b / H4b は、`insufficient_funds` が実際に起きる水準だけを数える。起きなければ「検証不能（Inconclusive）」。
+- 完了（追加依頼）: `research_question.md` を hypotheses.md に合わせて更新。`literature_review.md` の古い 1 行を修正（仮説を結論のように書いた箇所は他になし）。`CLAUDE.md` の「制約」に仮説の扱い（結論ではない／判定ルールは実験前に固定／設計上の保証は証拠にしない）を追記。
+- 完了: `notes_ja/day03.md`（個人用・非公開。ファイルを読み直して全面的に書き直し。用語のたとえ話、各ファイルの目的、確認クイズ 3 問つき）。pytest 16 件パス、`scripts/precommit_check.sh` 問題なし（src/・tests/ は未変更）。
+- 判断: 判定ルールの閾値は「全 30 シード（DV）で差の符号が一致」。範囲重なりだけでは Inconclusive にしない。
+- 判断（ユーザー承認）: Exp4 に H4b 用のセルを追加。資金水準はエンジン完成後に、本番と別のシード（101〜110、DV）・Model A・失敗率 0% の較正で決め、`insufficient_funds` の数だけを見る。崩れた場合は記録して基準を上げ、やり直す。
+- 完了: 2 文書の重複を整理。定義は `methodology.md` に集約し、`hypotheses.md` は参照にした。`integrity-checker` で修正前のコピーと比較し、内容の欠落なし。弱くなっていた 3 点（ample が崩れたときの手順、格子の選び方、バグ検知テスト）を修正。
+- 語数（`wc -w`）: 修正前 hypotheses 1,791 / methodology 2,271。整理後 hypotheses 1417 / methodology 2517（較正と必須テストの節を追加したため methodology は増加）。methodology は目標 1,500 語の対象から外す（ユーザー承認）。
+- 判断（要確認）: 較正の数値「低い水準のうち 2 つ以上で不足が出る」「H4b はシードの半数以上で不足が出る最も高い水準」は Claude の提案（DV）。
+- 未完了 / 既知の制限:
+  - Day 4 で決める未決事項: timeout の起こし方、バースト到着の定義、予約の解除タイミング、W（未回復 partial の打ち切り時間）、N=0 のとき NaN にするか、Peak Liquidity Proxy の実装可否、3 行以上のときの銀行の組み合わせ方。
+  - エンジン完成後（Day 6〜7）: 流動性の較正を実行し、「十分な資金（ample）」の基準と格子の水準を確定する。実験はまだしていない。
+  - 3 点を修正したあと、`integrity-checker` は再実行していない（pytest と precommit_check は再実行済み）。
+  - `research_question.md` の H2 は Gross Prefunding を Model A と比べるように読めるが、A では not applicable。Day 4 に文を直す。
+  - Step 6（PDF 読み、`sources.md` の UNVERIFIED 削減）は未実施。
+  - 検査役の再チェックで残った軽微な指摘（H2 の「B ≥ A」の根拠、H4b が W に依存すること）は文書に注記したのみ。
+- 次の日（Day 4）: import 構成・データ型・銀行残高構造・結果レコード形式を決め、最小の pytest を作る。methodology.md の未決事項を決める。

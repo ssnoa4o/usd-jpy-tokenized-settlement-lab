@@ -92,7 +92,7 @@ Mapping to real-world concepts. We read Model A as similar in spirit to non-PvP 
 
 What we add, if anything: a transparent, reproducible comparison of trade-offs in principal exposure, liquidity needs, and delay under changing conditions, focused on USD/JPY. Whether this adds anything beyond existing work is still to be judged. Conclusions would apply only to the simplified model.
 
-The hypotheses H1-H4 (see `research_question.md`) are to be tested and will be finalized on Day 3.
+The hypotheses H1-H4 (see `hypotheses.md`) are things to test, not conclusions. Each result will be recorded as supported, not supported, or inconclusive.
 
 ## 5. Gaps and open items
 
