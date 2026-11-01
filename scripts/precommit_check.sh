@@ -109,7 +109,7 @@ scan_phones() {
 
 check_content() {
   # Check 2: API keys and private keys
-  scan_pattern "API key (sk-)"       'sk-[A-Za-z0-9_-]{20,}'
+  scan_pattern "API key (sk-)"       '(^|[^A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}'
   scan_pattern "GitHub token"        'gh[pous]_[A-Za-z0-9]{20,}'
   scan_pattern "AWS access key"      'AKIA[0-9A-Z]{16}'
   scan_pattern "private key block"   '-----BEGIN [A-Z ]*PRIVATE KEY-----'

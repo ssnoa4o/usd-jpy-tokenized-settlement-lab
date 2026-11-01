@@ -21,3 +21,14 @@
   - スクリプトは既知のパターンだけを調べる安全網であり、保証ではない。push 前に `git status` も目で確認する。
   - `scripts/precommit_check.sh` は手動実行のみ（git の pre-commit フックにはしていない）。
 - 次の日（Day 2）: BIS Project Agorá・日銀・CLS・OSFI の一次資料を読み、literature_review.md の初版と出典一覧を作る。
+
+## Day 2 — literature review (first draft)
+- 完了: 公式ページ（BIS Agorá / Bank of Canada / 日本銀行 / CLS / OSFI）を 3 並列で調査し、`research/research_question.md`・`research/literature_review.md`（約 1,830 語）・`research/sources.md` を作成。
+- 完了: `integrity-checker` で検査。承認と読める表現・結果の先取りはなし。指摘 7 点（出典 ID の食い違い、語数、引用符、H1/H2 の書き方など）を修正済み。
+- 判断: A/B/C と「非 PvP／事前資金／PvP」の対応づけは自分たちの解釈と明記。CLS・Agorá の数値は各機関の主張として扱い、入力にも検証にも使わない。
+- 発見: HANDOFF の Agorá URL は 404（正しい URL は sources.md）。公式ページに "tokenised correspondent banking" の表現は見つからず、使わない。OSFI の FX 決済リスク指針（2013）は実在した。
+- 未完了 / 未確認: Agorá 報告書（97 ページ）・FAQ・BCBS 付録・日銀の PDF 類は読めず UNVERIFIED。日銀 神山氏の講演の日付（5/29 か 6/11）、BIS-3 の URL の切れ、日銀の 2026 年 3 月発表の原典。Agorá の 7 月テスト結果は BIS の 1 ページのみで裏取りなし。
+- 語数: literature_review.md は `wc -w` で 1,828（目標 1,800 をわずかに超過。表記号を含む）。
+- 完了: `notes_ja/day02.md`（個人用・非公開。用語のたとえ話、ファイルの役割、確認クイズ 3 問つき）。
+- 環境: ユーザーが `brew install poppler` を実施。`pdftotext`（`/opt/homebrew/bin/pdftotext`）を確認済み。PDF はまだ読んでいないので、UNVERIFIED の項目は変更なし（読んだら `sources.md` を更新する）。
+- 次の日（Day 3）: H1〜H4 を確定し、`research/hypotheses.md`・`research/methodology.md` の初版を作る。余裕があれば poppler で Agorá 報告書・BCBS 付録などの PDF を読み、`sources.md` の UNVERIFIED を減らす。
