@@ -1,6 +1,6 @@
 # Research Question
 
-Status: Day 3 update (2026-11-01). Hypotheses are things to test, not conclusions. Decision rules (supported / not supported / inconclusive) are fixed in `hypotheses.md` before any experiment.
+Status: Day 4 update (2026-11-02). Hypotheses are things to test, not conclusions. Decision rules (supported / not supported / inconclusive) are fixed in `hypotheses.md` before any experiment.
 
 ## Central question
 
@@ -18,14 +18,14 @@ Prefunding and atomic PvP are different ideas. Prefunding is about securing fund
 
 Settlement states: a transaction is `settled` (both legs completed), `partial` (only one leg completed), or `failed` (neither leg completed). Success rate counts only `settled`; `partial` is not included.
 
-Metrics (defined in the methodology): principal exposure, success rate, partial settlement rate, failure rate, gross prefunding, peak liquidity (a proxy in the MVP), average settlement time, liquidity utilization, operational delay.
+Metrics (defined in the methodology): principal exposure, success rate, partial settlement rate, failure rate, gross prefunding, peak liquidity (a proxy in the MVP), average settlement time, liquidity utilization, operational delay. In this model average settlement time and operational delay follow directly from the injected delay, so operational performance is compared mainly through success, partial and failure rates under stress.
 
 ## Hypotheses to be tested (not conclusions)
 
 - H1 (to be tested): Model C commits both legs or neither, so its partial count and principal exposure are zero by design (a correctness test, not evidence). The open questions are how principal exposure in Models A and B responds to injected second-leg failures, and under which conditions B differs from A.
-- H2 (to be tested): How do gross prefunding and the peak-liquidity proxy of Models B and C compare with Model A, and how do they change as initial liquidity changes? Part of the answer follows from the metric definitions, and C versus A may turn out equal.
+- H2 (to be tested): Does the gap in the peak-liquidity proxy between Models B and A change with settlement delay? Separately, as descriptive questions: how does gross prefunding compare between Models B and C (it is not applicable to Model A), and how do these measures change as initial liquidity changes? Part of the answer follows from the metric definitions, and C versus A is expected to be close to equal at ample liquidity.
 - H3 (to be tested): Do transaction volume, number of banks, and arrival pattern change the lowest initial-liquidity level at which the success rate reaches a stated target?
-- H4 (to be tested): Do liquidity stress and delay change success rate and duration-weighted exposure differently across the three models?
+- H4 (to be tested): Do liquidity stress and delay change success rate and amount-based principal exposure differently across the models?
 
 These statements are open questions. No experiment has been run. Each will be recorded as supported, not supported, or inconclusive, using only numbers from `results/*.csv`.
 

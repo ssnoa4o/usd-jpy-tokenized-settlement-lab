@@ -54,3 +54,20 @@
   - Step 6（PDF 読み、`sources.md` の UNVERIFIED 削減）は未実施。
   - 検査役の再チェックで残った軽微な指摘（H2 の「B ≥ A」の根拠、H4b が W に依存すること）は文書に注記したのみ。
 - 次の日（Day 4）: import 構成・データ型・銀行残高構造・結果レコード形式を決め、最小の pytest を作る。methodology.md の未決事項を決める。
+
+## Day 4 — development and test skeleton
+- 完了: `src/simulator.py`（`Status` / `FailureReason` / `Model` / `Currency`、`SimulationParams`、`SettlementResult`、`Leg`、`Ledger`。`run_model` は引数のみで本体は未実装）、`src/metrics.py`（`safe_ratio` のみ）、`tests/test_simulator.py`、`tests/test_metrics.py`。pytest は 67 passed / 7 skipped。skip は `methodology.md` sec. 7 の必須テスト 7 項目で、Day 6〜8 に実装する。
+- 完了: `methodology.md` sec. 11 の Day 4 未決事項をすべて決定。`research_question.md` の H2 を修正。
+- 判断（ユーザー承認）: Model C は到着 + 遅延で 1 回コミットする。到着は sequential 10 秒間隔、burst 100 秒ごとに 10 件。`timeout` は予約のみで発生させない。待ち行列なし。金額は整数（1/100 単位）。
+- 判断（ユーザー承認、検査後の変更、実験前）: H2 の主比較を「B−A の Proxy の差、遅延 300 秒 vs 0 秒」に変更（C vs A は十分な資金のもとで障害以外では差が出ないため探索扱い）。H4b の主指標を金額ベースの Principal Exposure に変更（期間加重は W の影響が大きいため参考値）。
+- 判断（Claude、検査指摘の修正）: H1b の active 条件を「全シードで A に第 2 レッグ資金不足の partial」に厳格化。H3 はグリッド端の L* を Inconclusive に。較正は A/B/C を読み、基準の倍増は最大 5 回、下側倍率の半減は最大 3 回（DV）。`run_metrics.csv` を追加。W は write-off ではなく cut-off と呼ぶ（コードは `cutoff_seconds`）。
+- 検査: `reviewer` 1 回（numpy の真偽値が状態検査をすり抜ける問題などを修正）。`integrity-checker` 2 回。2 回目は高の指摘なし。
+- 判断: 2 回目の「A と C の Proxy の差」の指摘は採用せず。全 USD 支払いが同じ遅延だけずれ、通貨内の順序は変わらないため。Day 7〜8 に実装で確認できる。
+- 未完了 / 既知の制限:
+  - 2 回目の検査後の修正（較正の上限、H4b の読み替えなど）に、`integrity-checker` は再実行していない。Week 1 ゲートで確認する。
+  - 較正は失敗率 0%、本番は 1% なので、本番で ample が崩れる可能性は残る（sec. 6 のやり直し手順で扱う）。
+  - 較正の上限（5 回、3 回）と「全シード」の条件は Claude の提案（DV）。
+  - H4b は遅延の効果が残高経由でしか出ないので、差がほとんど出ない可能性がある。
+  - PDF 読みと `sources.md` の UNVERIFIED 削減は未実施。
+  - `Ledger` に両通貨を一度に予約する操作はない。Day 7 の Model B で、片方の予約失敗時に解除し忘れないよう、「失敗後は予約 0」をテストする。
+- 次の日（Day 5）: `transactions.py` に `arrival_time`, `usd_payer`, `jpy_payer`, `failure_draw` を追加し、`direction` を置き換える。乱数は用途別に分ける。`Ledger` は Python の int のみ受け付けるので、numpy の整数は `to_minor` / `int()` で変換する。fx 150.00 以外では JPY の丸めに注意する。
