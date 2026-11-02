@@ -1,6 +1,6 @@
 # Literature Review (first draft)
 
-Status: Day 2 draft, 2026-11-01. Source IDs refer to `sources.md`. Pages were read through summaries, so quotes must be re-checked before publication. This is an independent research prototype using synthetic data. No institution named here has reviewed, approved, or endorsed it.
+Status: Day 2 draft, updated 2026-11-02. Source IDs refer to `sources.md`. HTML pages were read through summaries and must be re-checked before quoting. Seven PDFs were read from extracted text on 2026-11-02, some only in part; pages are listed in `sources.md`. This is an independent research prototype using synthetic data. No institution named here has reviewed, approved, or endorsed it.
 
 In each section we try to keep apart: (a) what a source says, (b) what our simplified model does, and (c) our own interpretation.
 
@@ -18,7 +18,7 @@ Three risk terms are used in this study. The wording below is OSFI's glossary (O
 
 OSFI says PvP ensures final transfer in one currency if and only if final transfer in the other occurs. It says PvP arrangements "are designed to eliminate principal risk, but will not eliminate a bank's replacement cost risk or liquidity risk," and that PvP arrangements "do not guarantee settlement" (OSFI-1, sec. 2.1). It adds that some trades cannot use PvP, such as trades in certain products or currencies, certain same-day trades, and trades with ineligible counterparties (sec. 2.2).
 
-The Basel Committee guidance (2013) says banks should use PvP "where practicable" to reduce principal risk, and use netting and collateral to reduce replacement cost risk (BCBS-1). We did not read its annex, so we use OSFI's glossary for definitions.
+The Basel Committee guidance (2013) says banks should use PvP "where practicable" to reduce principal risk, and use netting and collateral to reduce replacement cost risk (BCBS-1). The opening definitions in the Basel Committee glossary match the OSFI wording quoted above (BCBS-1, PDF pp.40-42 / printed pp.34-36).
 
 (b) Our model: principal exposure and the liquidity measures are defined in the methodology (Day 3). The MVP does not model replacement cost risk or market prices.
 
@@ -32,18 +32,18 @@ CLS says it settles trades "simultaneously" using a "unique payment-versus-payme
 
 CLS's own claims, not independently verified by us:
 - Funding requirements are cut by more than 96% (CLS-3; no method shown).
-- Reliance on non-PvP settlement fell from 85% to 22% of FX traffic over 25 years, "primarily because of CLS", and CLS PvP share has stabilized at around one third of traded gross notional (CLS-4; no external source cited).
+- Reliance on non-PvP settlement fell from 85% to 22% of FX traffic over 25 years, which CLS attributes mainly to CLS, and its PvP share has levelled off at about one third (CLS-4, PDF p.3). The sentence has no citation of its own; Figure 1 has a source note naming the BIS Triennial Survey and Kos / Levich (2016), and CLS attributes the 22% to the 2022 Triennial Survey (PDF p.7).
 - More than USD 8 trillion settled on an average day (CLS-1; undated).
 
 (c) Our inference: a funding reduction below 100% suggests funding is reduced, not removed. We do not use any CLS figure as an input or a validation target.
 
 ### BOJ-NET and FXYCS
 
-The most relevant opened BOJ item is a 2007 BOJ Review article on Japan's experience since 2002 (BOJ-8). From its abstract only: after CLS launched in September 2002, a large value of yen payments moved from FXYCS to CLS; the liquidity needed to settle FXYCS rose; and the CLS design created time-critical payments in BOJ-NET and more interdependence among RTGS systems. We read the abstract only.
+The most relevant opened BOJ item is a 2007 BOJ Review article on Japan's experience since 2002 (BOJ-8). With data to 2006, BOJ authors say a significant portion of yen FX payments moved from FXYCS to CLS after September 2002 (BOJ-8, PDF p.1), and that the RTGS share in FXYCS rose from less than 2% in 2001 to nearly 30% in 2006 (PDF p.4). They say CLS yen pay-ins and pay-outs go through BOJ-NET (PDF pp.2, 4). These figures describe 2006, not current operations.
 
-Current FXYCS operation, how CLS settles JPY through BOJ-NET, and BOJ-NET operating details are UNVERIFIED. A search summary mentioned them, but we did not open a page that confirms them, so we make no claim. The BOJ-NET PFMI disclosure (31 Jul 2025 edition) is listed on a BOJ page but was not opened (BOJ-10).
+BOJ says CLS yen settlements go through BOJ-NET (BOJ-10, PDF pp.4, 15). BOJ-10 (July 2025) names the Japanese Bankers Association as FXYCS operator (PDF p.9) and says FXYCS moved to RTGS on BOJ-NET in 2008 (PDF p.15). BOJ-10 was read in part. The March 2026 announcement remains UNVERIFIED.
 
-(c) Our interpretation: the 2007 abstract gives a Japan-specific reason to track yen liquidity demand, in addition to risk. It does not test our hypotheses.
+(c) Our interpretation: the 2007 article gives a Japan-specific reason to track yen liquidity demand, in addition to risk. It does not test our hypotheses.
 
 ## 3. Tokenization initiatives
 
@@ -51,13 +51,13 @@ Current FXYCS operation, how CLS settles JPY through BOJ-NET, and BOJ-NET operat
 
 What the sources say (BIS-1, BIS-2, BIS-3). The stated objective is to test whether a shared, programmable platform for multi-currency wholesale cross-border payments is desirable, feasible, and viable. The report summary describes tokenised commercial bank deposits combined with tokenised central bank reserves, atomic multi-currency settlement, possible 24/7 operation, and smart contracts. The convenors are the BIS and the Institute of International Finance. The media release of 27 May 2026 lists seven central banks, including the Bank of Japan, and more than 40 private financial institutions, and says work will advance to real-value testing. It says all-or-nothing settlement "is achievable securely across currencies and jurisdictions"; this is BIS's own claim. BIS says Innovation Hub projects are experimental, and no production launch is stated.
 
-Claims from one BIS page only (BIS-1), not backed by a second source we opened: real-value testing was completed in July 2026, with about CHF 800,000 across 30 transactions in 17 scenarios, an average initiation-to-settlement time of about 80 seconds, and no integration with RTGS or core banking systems. BIS-1 also says two PvP scenarios were tested (CHF-GBP and GBP-USD), that funds are locked before settlement (our paraphrase), and that a cross-currency provider had to manually confirm converted amounts in dual-currency payments. Its header date (27 May 2026) conflicts with its content, so we treat these as that page's claims. The 97-page report and the FAQ were not readable (UNVERIFIED). We do not use these figures as inputs to, or validation of, our results; the setting is different.
+Claims from one BIS page only (BIS-1), not backed by a second source we opened: real-value testing was completed in July 2026, with about CHF 800,000 across 30 transactions in 17 scenarios, an average initiation-to-settlement time of about 80 seconds, and no integration with RTGS or core banking systems. BIS-1 also says two PvP scenarios were tested (CHF-GBP and GBP-USD), that funds are locked before settlement (our paraphrase), and that a cross-currency provider had to manually confirm converted amounts in dual-currency payments. Its header date (27 May 2026) conflicts with its content, so we treat these as that page's claims. The 97-page report and the FAQ were read from extracted text, the report only in part. The report's landing-page date (27 May 2026) is before the July 2026 testing that BIS-1 describes, so the absence of these figures from the report neither confirms nor contradicts them. They remain single-source. We do not use these figures as inputs to, or validation of, our results; the setting is different.
 
-Discrepancy on finality: BIS-1 says settlement finality is "under review", while BIS-3 says finality is achievable in all seven participating jurisdictions, with technical, operational, and contractual requirements still to be defined. We do not reconcile the two.
+The report's summary says finality "is achievable across" all seven jurisdictions, with further work needed on requirements (BIS-2, PDF p.7); this resembles our summary-based note of BIS-3. The report says its legal analysis "does not make definitive legal determinations" (PDF p.61), and that differences in legal effects across jurisdictions "could create operational risks" (PDF p.88). The report says an operating model and its legal characterisation were out of scope (PDF pp.70-71). The phrase "under review" (BIS-1) was not found in the report. We do not call the two pages contradictory.
 
-No Agorá test of USD/JPY PvP is reported on the pages we read. We found no quantitative settlement-risk or liquidity results there. Whether the full report has any is UNVERIFIED.
+A search of the report (USD, JPY, yen, Japan, dollar) found no USD/JPY PvP test. A separate search (terms in `sources.md`) found no quantified liquidity or settlement-risk result. A GBP/JPY liquidity-balancing journey is an illustration, not a test (PDF pp.85-87). BIS says benefits "will only be quantifiable when applied to more realistic conditions" (PDF p.81).
 
-The HANDOFF URL for the Agorá page (bis.org/project/agora.htm) returned 404; we use the URL in `sources.md`. The phrase "tokenised correspondent banking" was not found on any official page we opened, so we do not use it.
+The HANDOFF URL for the Agorá page (bis.org/project/agora.htm) returned 404; we use the URL in `sources.md`. The phrase "tokenised correspondent banking" was not found on any official page we opened, so we do not use it. The phrase was also not found in the seven PDFs. BIS writes "preserves correspondent banking as the backbone of global payments" (BIS-2, PDF p.6).
 
 ### Bank of Canada
 
@@ -71,6 +71,8 @@ BOJ materials we opened describe exploration, not production:
 - Executive Director Kamiyama: March 2026 BOJ plan to explore tokenized current account deposits at BOJ, and a DLT Sandbox Project in the CBDC Forum (BOJ-6). Its date is inconsistent (index page 29 May 2026; URL suggests 11 June 2026), so it needs checking. BOJ-5 and BOJ-6 describe the sandbox differently (internal vs. in the CBDC Forum); we do not say which.
 
 Neither speech, as summarized, discusses FX settlement or CLS. Project Stella and the CBDC pilot reports were not opened (UNVERIFIED).
+
+BOJ says FX is now settled with a relatively small amount of intraday liquidity because CLS Bank "provides a kind of multilateral netting effect", and that if liquidity needs increase substantially on a common platform, "market participants would likely avoid using the platform for foreign exchange settlement purposes" (BOJ-7, Chapter VII, PDF p.10). This is BOJ's view, not a test result.
 
 ## 4. How this study differs from existing infrastructure and initiatives
 
@@ -88,7 +90,7 @@ Mapping to real-world concepts. We read Model A as similar in spirit to non-PvP 
 - Model A is an abstraction ("time-gapped independent settlement"), not a reproduction of correspondent banking.
 - Model B does not reproduce the legal or operational structure of tokenized deposits or central bank reserves.
 - Prefunding and atomicity are separate ideas in our model. A balance check does not make Model C atomic; the commit must be all-or-nothing.
-- The Agorá pages we read describe locked funds and atomic settlement only briefly, so any resemblance to our Models B and C is our reading.
+- BIS describes lock, commit and cancel steps for the prototype, including timeouts and a PvP coordinator (BIS-2, PDF pp.48-57). BIS notes that not all ledger updates occur simultaneously (PDF p.70). Any resemblance to our Models B and C is our own reading.
 
 What we add, if anything: a transparent, reproducible comparison of trade-offs in principal exposure, liquidity needs, and delay under changing conditions, focused on USD/JPY. Whether this adds anything beyond existing work is still to be judged. Conclusions would apply only to the simplified model.
 
@@ -97,14 +99,19 @@ The hypotheses H1-H4 (see `hypotheses.md`) are things to test, not conclusions. 
 ## 5. Gaps and open items
 
 Source gaps:
-1. The Agorá 97-page report and FAQ were not read; failure handling, rollback, and any quantified liquidity or settlement-risk findings are UNVERIFIED.
+1. The Agorá report was read in part (see `sources.md`). BIS describes failure handling in the prototype workflow. Quantified liquidity or settlement-risk findings were not found.
 2. Agorá July 2026 real-value testing claims rest on one BIS page with an inconsistent header date. Find a second official source.
-3. BCBS annex definitions (p.33) not read.
-4. Why trades are not PvP-settled (CLS-4 PDF) not obtained.
-5. FXYCS operation, CLS-JPY settlement via BOJ-NET, the BOJ-NET PFMI disclosure, and the March 2026 BOJ announcement were not verified.
-6. The Kamiyama speech date needs resolving.
-7. Full text of BOJ-8 (2007) not read.
+3. The BOJ-NET disclosure was read in part. The March 2026 BOJ announcement is still not verified.
+4. The Kamiyama speech date needs resolving.
+
+Closed on 2026-11-02:
+- BCBS annex definitions: read (PDF pp.33-34, 40-42).
+- Why trades are not PvP-settled: reasons given by CLS (CLS-4, PDF pp.5-7).
+- FXYCS operation and CLS-JPY settlement via BOJ-NET: described in BOJ-8 and BOJ-10.
+- BOJ-8 (2007): read; charts not read numerically.
 
 Modelling gaps: no netting, credit lines, or fund reuse in the MVP, so peak liquidity is a proxy and not the same as gross prefunding; synthetic parameters do not represent real bank liquidity or failure rates; no replacement cost risk and no legal finality.
 
 Future research (out of scope): compare Agorá's two-layer structure with our Models B and C; Project Stella findings on DvP/PvP; Cross-border DVP Link; ISO 20022 for BOJ-NET; other currency pairs; legal settlement finality; CPMI-IOSCO PFMI Principle 12 and BIS Triennial Survey data on FX volumes and non-PvP share.
+
+BIS says netting and batch PvP are beyond the prototype (BIS-2, PDF p.57) and lists liquidity needs from gross settlement as a future topic (PDF p.91). Our own exclusion of netting is a design choice.

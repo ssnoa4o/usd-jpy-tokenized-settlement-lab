@@ -71,3 +71,23 @@
   - PDF 読みと `sources.md` の UNVERIFIED 削減は未実施。
   - `Ledger` に両通貨を一度に予約する操作はない。Day 7 の Model B で、片方の予約失敗時に解除し忘れないよう、「失敗後は予約 0」をテストする。
 - 次の日（Day 5）: `transactions.py` に `arrival_time`, `usd_payer`, `jpy_payer`, `failure_draw` を追加し、`direction` を置き換える。乱数は用途別に分ける。`Ledger` は Python の int のみ受け付けるので、numpy の整数は `to_minor` / `int()` で変換する。fx 150.00 以外では JPY の丸めに注意する。
+
+## Day 5 — synthetic transaction data
+- 完了: `src/transactions.py` を拡張。列は `transaction_id, arrival_time, usd_payer, jpy_payer, usd_amount, jpy_amount, fx_rate, failure_draw`（`direction` は削除）。引数 `n_banks`（2〜10、銀行名 A〜J）と `arrival`（sequential / burst）を追加。`bank_names()` を公開。
+- 完了: `data/sample_transactions.csv` と `_meta.json` を再生成（100 件、seed 42、2 行、sequential）。乱数の取り方を変えたので値は Day 1 版からすべて変わった。これに依存する実験結果はない。
+- 完了: `tests/test_transactions.py` を更新。pytest は 98 passed / 7 skipped。skip は Day 6〜8 の必須テストで変更なし。CSV は 2 回生成しても同じ。`scripts/precommit_check.sh` は問題なし。
+- 完了: `methodology.md`（sec. 3 の入力形式、到着時刻は乱数なし、sec. 9 の古い `direction` の表現）と `README.md` を更新。
+- 判断: 乱数は金額・銀行・失敗の 3 本。到着時刻は決定的なので乱数を使わない（`methodology.md` の「arrival も別の乱数」を修正）。
+- 判断: 銀行の組は 1 回の呼び出しでまとめて引く。2 回に分けると `count` を増やしたときに先頭の行の JPY 支払行が変わるため。
+- 検査: `reviewer` 1 回。高の指摘なし。弱いテストの指摘を修正（厳密比較、`failure_draw` の分布、乱数の相関、組の一様性を ±15% に、丸めの許容を 0.5 単位に）。修正後、「3 本の乱数が同じシード」「`failure_draw` が全部 0」の 2 種類のわざと壊したコードを、新しいテストが検知することを確認（コードは元に戻した）。
+- 検査: `integrity-checker` 1 回。高の指摘なし。`README.md` の古い状態表示と `methodology.md` の時制を修正。`docs/HANDOFF.md` の参考コードには `direction` が残るが、当初の資料なので変更しない。
+- 未完了 / 既知の制限:
+  - `save_transactions` は、引数の `n_banks` / `arrival` が渡されたデータと一致するかを確認しない。numpy の整数を渡すと JSON 書き込みでエラーになる。今の呼び出し元は `__main__` のみで実害なし。
+  - `reviewer` の指摘を直したあと、`reviewer` は再実行していない（pytest とわざと壊す確認は実施）。
+  - Step 6（PDF 読み、`sources.md` の UNVERIFIED 削減）は、Day 5 の実装の時点では未実施（下の「追加作業」で実施）。
+  - Day 10 の注意: Gross Prefunding の `jpy_amount / fx_rate` は、fx 150 以外では丸め誤差が出る。
+  - Day 6 の注意: `Ledger` の銀行一覧は CSV の列からではなく `bank_names(n_banks)` から作る。取引に出ない銀行が抜けると、総流動性がずれるため。
+- 完了（追加作業）: 公式 URL から PDF 7 点（BIS-2、BIS-FAQ、BCBS-1、CLS-4、BOJ-7 第 VII 章、BOJ-8、BOJ-10）を `research/pdfs/` に保存（git 管理外）。ページごとに文字を取り出して `researcher` が読み、`sources.md` を更新。ページ番号、「Local PDF copies」（URL とハッシュ値）、「Notes on BIS-2-PDF」を追加。BOJ-X を X1〜X3 に分割。
+- 検査（追加作業）: 引用 18 件とハッシュ値 7 件を原文と照合して一致。`integrity-checker` 1 回、高の指摘なし。`sources.md` 内の指摘を修正（修正後の再検査はしていない）。
+- 未完了（追加作業）: `literature_review.md` の修正案 13 件はユーザー承認のうえ適用済み。再検査で高の指摘なし。追加の修正案もユーザー承認のうえ適用済み（最終の文面には `integrity-checker` を再実行していない）。CLS-4 の引用は言い換えに変更。HTML 要約由来の逐語引用は、Day 20 までに原文で再確認が必要。BIS-2 と BOJ-10、BCBS-1 は一部のみ読了。BOJ-7 は第 VII 章のみ。BOJ-X3（2026 年 3 月の発表）と BIS-FAQ の日付は UNVERIFIED のまま。CLS-4 には複写や共有を制限する権利表示がある（PDF p.8）。引用は短くし、PDF は再配布しない。
+- 次の日（Day 6）: Model A Sequential を実装する。2 レッグの時間差、partial、元本エクスポージャー、残高更新。
