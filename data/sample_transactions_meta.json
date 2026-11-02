@@ -2,5 +2,7 @@
   "count": 100,
   "fx_rate": 150.0,
   "seed": 42,
+  "n_banks": 2,
+  "arrival": "sequential",
   "generator": "src/transactions.py"
 }

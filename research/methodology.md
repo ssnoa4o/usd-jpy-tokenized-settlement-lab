@@ -1,6 +1,6 @@
 # Methodology (draft)
 
-Status: Day 4 draft, 2026-11-02. The engine skeleton exists, but settlement logic is not implemented and no experiment has been run. This file is the single place for definitions, so code, tests, report and slides use the same words. If code and this file disagree, fix one and record the change.
+Status: Day 5 draft, 2026-11-02. The transaction generator and engine skeleton exist, but settlement logic is not implemented and no experiment has been run. This file is the single place for definitions, so code, tests, report and slides use the same words. If code and this file disagree, fix one and record the change.
 
 This is an independent research prototype on synthetic data. No institution (BIS, BoJ, CLS, OSFI or any other) has reviewed, approved or endorsed it.
 
@@ -27,7 +27,7 @@ Key distinction: **Prefunding and Atomic PvP are different concepts.** Prefundin
 
 ## 3. Transaction record and settlement states
 
-Input record (as in the HANDOFF generator): `transaction_id`, `usd_amount`, `jpy_amount` (= usd_amount x fx_rate), `direction`, `fx_rate`. Additions confirmed for Day 5: `arrival_time` (simulation seconds), `usd_payer`/`jpy_payer` bank IDs, which replace `direction`, and `failure_draw` (sec. 7). Amounts, bank pairs, arrival and failure draws use separate random streams, so changing the number of banks does not change the amounts.
+Input record (`src/transactions.py`): `transaction_id`, `arrival_time` (simulation seconds), `usd_payer`, `jpy_payer` (bank names A to J), `usd_amount`, `jpy_amount` (= usd_amount x fx_rate, rounded to 2 decimals), `fx_rate`, `failure_draw` (sec. 7). Amounts, bank pairs and failure draws use separate random streams, so changing the number of banks does not change the amounts or failure draws. Arrival times are deterministic and use no random stream (sec. 4). Within a seed, a larger volume keeps the earlier rows unchanged.
 
 Result record per transaction: `transaction_id`, `model`, `status`, `failure_reason`, `usd_leg_done`, `jpy_leg_done`, `arrival_time`, `start_time`, `end_time`, `principal_exposure_usd`.
 
@@ -125,7 +125,7 @@ For each transaction one uniform draw `failure_draw` in [0, 1) is taken once fro
 
 ## 9. Threats to validity
 
-- Synthetic parameters: uniform sizes, random direction, fixed rate. Results do not describe real flows.
+- Synthetic parameters: uniform sizes, random bank pairs, fixed rate. Results do not describe real flows.
 - No netting, credit, or fund reuse beyond in-run receipts, so liquidity needs are likely to differ from real arrangements (proxy only).
 - Model choices drive outcomes: some H1 results follow from definitions. Required tests keep these separate from evidence.
 - Failure probability is a single independent draw; real failures are correlated.
@@ -153,7 +153,7 @@ Also excluded: netting of any kind; credit lines and intraday credit; replacemen
 Decided on Day 4, before any experiment (all values DV):
 1. Ratios with a zero denominator are NaN, not 0 (sec. 5).
 2. `timeout` is a reserved reason and is not triggered in the main experiments (sec. 3).
-3. Sequential arrival is one transaction every 10 s; burst is 10 transactions every 100 s (sec. 4). `arrival_time` is added to the generator on Day 5.
+3. Sequential arrival is one transaction every 10 s; burst is 10 transactions every 100 s (sec. 4). `arrival_time` was added to the generator on Day 5.
 4. Model B reservations are used at leg completion and released at failure. Model C validates and commits once, at arrival + delay (sec. 2).
 5. W = 3,600 s cut-off, used for every `partial` (sec. 5). Duration-weighted exposure is descriptive only.
 6. The Peak Liquidity Proxy is implementable as a running maximum in the ledger (sec. 5).

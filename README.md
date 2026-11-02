@@ -2,7 +2,7 @@
 
 Open-source research and simulation framework for tokenized USD/JPY foreign exchange settlement.
 
-> **Status: early draft (Day 1 of a 21-day plan).** Only the synthetic transaction generator exists today. The settlement simulator, experiments and dashboard are planned and not yet implemented. No experiments have been run, and this repository reports no results yet.
+> **Status: early draft (Day 5 of a 21-day plan).** The synthetic transaction generator works, and the bank ledger and shared types exist. The settlement logic, experiments and dashboard are planned and not yet implemented. No experiments have been run, and this repository reports no results yet.
 
 ## Project overview
 
@@ -69,7 +69,7 @@ python -m src.transactions
 
 This writes two files:
 
-- `data/sample_transactions.csv`: 100 synthetic USD/JPY transactions (seed 42).
+- `data/sample_transactions.csv`: 100 synthetic USD/JPY transactions (seed 42, 2 banks, one arrival every 10 seconds). Columns: `transaction_id`, `arrival_time`, `usd_payer`, `jpy_payer`, `usd_amount`, `jpy_amount`, `fx_rate`, `failure_draw`.
 - `data/sample_transactions_meta.json`: the parameters used to generate them.
 
 The data uses a fixed USD/JPY rate of 150.00. This is an illustrative simplification, not a market observation or forecast.
@@ -78,7 +78,7 @@ The data uses a fixed USD/JPY rate of 150.00. This is an illustrative simplifica
 
 | Component | Status |
 |---|---|
-| Synthetic transaction generator (`src/transactions.py`) | Implemented (Day 1) |
+| Synthetic transaction generator (`src/transactions.py`) | Implemented (Day 1, extended Day 5) |
 | Settlement simulator for Models A, B and C | Planned |
 | Metrics and experiments | Planned |
 | Streamlit dashboard | Planned |
