@@ -1,14 +1,18 @@
 """Shared types and the bank ledger for the three settlement models.
 
-Definitions follow research/methodology.md. The settlement logic is added on Day 6-7.
+Definitions follow research/methodology.md. Model A (sequential) is implemented;
+Models B and C are added on Day 7-8.
 """
 
+import heapq
 import math
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from typing import NamedTuple
 
 import pandas as pd
+
+from src.transactions import bank_names
 
 MINOR_UNITS_PER_UNIT = 100
 
@@ -31,6 +35,13 @@ class Model(StrEnum):
     ATOMIC = "atomic"
 
 
+class EventType(IntEnum):
+    """Event kinds in processing order: at equal time, lower values run first."""
+
+    DELAYED_STEP = 0  # Second leg (A, B) or commit (C), one delay after arrival.
+    ARRIVAL = 1
+
+
 class Currency(StrEnum):
     USD = "USD"
     JPY = "JPY"
@@ -51,6 +62,7 @@ class SimulationParams:
     delay_seconds: float = 60
     failure_probability: float = 0.01
     cutoff_seconds: float = 3_600
+    n_banks: int = 2
 
     def __post_init__(self) -> None:
         values = (
@@ -70,6 +82,7 @@ class SimulationParams:
             raise ValueError("initial balances must be >= 0")
         if self.delay_seconds < 0 or self.cutoff_seconds < 0:
             raise ValueError("times must be >= 0")
+        bank_names(self.n_banks)  # raises ValueError if n_banks is not 2 to 10
 
 
 @dataclass(frozen=True)
@@ -223,8 +236,118 @@ def _check_leg(leg: Leg, balances: dict[tuple[str, Currency], int]) -> None:
             raise KeyError(f"unknown account: {bank} {leg.currency}")
 
 
+class _Transaction(NamedTuple):
+    """One input row with plain Python values and integer amounts."""
+
+    transaction_id: int
+    arrival_time: float
+    usd_payer: str
+    jpy_payer: str
+    usd_amount: float
+    usd_minor: int
+    jpy_minor: int
+    failure_draw: float
+
+
 def run_model(
     transactions: pd.DataFrame, model: Model, params: SimulationParams
 ) -> tuple[list[SettlementResult], Ledger]:
-    """Run one settlement model over the transactions. Implemented on Day 6-7."""
-    raise NotImplementedError("settlement logic is implemented on Day 6-7")
+    """Run one settlement model over the transactions. Only Model A exists so far."""
+    if model != Model.SEQUENTIAL:
+        raise NotImplementedError("Models B and C are implemented on Day 7-8")
+    return _run_sequential(transactions, params)
+
+
+def _new_ledger(params: SimulationParams) -> Ledger:
+    """Every bank starts with the same USD and JPY balance."""
+    initial = {
+        Currency.USD: to_minor(params.initial_usd),
+        Currency.JPY: to_minor(params.initial_jpy),
+    }
+    return Ledger(bank_names(params.n_banks), initial)
+
+
+def _read_transactions(data: pd.DataFrame) -> dict[int, _Transaction]:
+    """Copy the rows into plain values. The DataFrame itself is not changed."""
+    if data["transaction_id"].duplicated().any():
+        raise ValueError("transaction_id must be unique")
+    rows = {}
+    for row in data.itertuples(index=False):
+        tx = _Transaction(
+            transaction_id=int(row.transaction_id),
+            arrival_time=float(row.arrival_time),
+            usd_payer=str(row.usd_payer),
+            jpy_payer=str(row.jpy_payer),
+            usd_amount=float(row.usd_amount),
+            usd_minor=to_minor(float(row.usd_amount)),
+            jpy_minor=to_minor(float(row.jpy_amount)),
+            failure_draw=float(row.failure_draw),
+        )
+        if not math.isfinite(tx.failure_draw) or not math.isfinite(tx.arrival_time):
+            raise ValueError("arrival_time and failure_draw must be finite numbers")
+        rows[tx.transaction_id] = tx
+    return rows
+
+
+def _usd_leg(tx: _Transaction) -> Leg:
+    return Leg(tx.usd_payer, tx.jpy_payer, Currency.USD, tx.usd_minor)
+
+
+def _jpy_leg(tx: _Transaction) -> Leg:
+    return Leg(tx.jpy_payer, tx.usd_payer, Currency.JPY, tx.jpy_minor)
+
+
+def _run_sequential(
+    data: pd.DataFrame, params: SimulationParams
+) -> tuple[list[SettlementResult], Ledger]:
+    """Model A: USD leg at arrival, JPY leg one delay later, no queue and no retry."""
+    ledger = _new_ledger(params)
+    if data.empty:
+        return [], ledger
+    transactions = _read_transactions(data)
+    # Events are ordered by (time, event type, transaction_id).
+    events = [(tx.arrival_time, EventType.ARRIVAL, tid) for tid, tx in transactions.items()]
+    heapq.heapify(events)
+    results = {}
+    while events:
+        time, kind, tid = heapq.heappop(events)
+        tx = transactions[tid]
+        if kind == EventType.ARRIVAL:
+            if ledger.transfer(_usd_leg(tx)):
+                later = time + params.delay_seconds
+                heapq.heappush(events, (later, EventType.DELAYED_STEP, tid))
+            else:
+                short = FailureReason.INSUFFICIENT_FUNDS
+                results[tid] = _sequential_result(tx, Status.FAILED, short, time)
+        else:
+            results[tid] = _finish_second_leg(tx, time, params, ledger)
+    return [results[tid] for tid in sorted(results)], ledger
+
+
+def _finish_second_leg(
+    tx: _Transaction, time: float, params: SimulationParams, ledger: Ledger
+) -> SettlementResult:
+    """Second leg of Model A. The failure draw is checked before the funds."""
+    if tx.failure_draw < params.failure_probability:
+        return _sequential_result(tx, Status.PARTIAL, FailureReason.TECHNICAL_FAILURE, time)
+    if not ledger.transfer(_jpy_leg(tx)):
+        return _sequential_result(tx, Status.PARTIAL, FailureReason.INSUFFICIENT_FUNDS, time)
+    return _sequential_result(tx, Status.SETTLED, None, time)
+
+
+def _sequential_result(
+    tx: _Transaction, status: Status, reason: FailureReason | None, end_time: float
+) -> SettlementResult:
+    """Build the result. The USD leg is done unless the transaction failed at arrival."""
+    return SettlementResult(
+        transaction_id=tx.transaction_id,
+        model=Model.SEQUENTIAL,
+        status=status,
+        failure_reason=reason,
+        usd_leg_done=status != Status.FAILED,
+        jpy_leg_done=status == Status.SETTLED,
+        arrival_time=tx.arrival_time,
+        start_time=tx.arrival_time,
+        end_time=end_time,
+        principal_exposure_usd=tx.usd_amount if status == Status.PARTIAL else 0.0,
+    )

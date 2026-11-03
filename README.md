@@ -2,7 +2,7 @@
 
 Open-source research and simulation framework for tokenized USD/JPY foreign exchange settlement.
 
-> **Status: early draft (Day 5 of a 21-day plan).** The synthetic transaction generator works, and the bank ledger and shared types exist. The settlement logic, experiments and dashboard are planned and not yet implemented. No experiments have been run, and this repository reports no results yet.
+> **Status: early draft (Day 6 of a 21-day plan).** The synthetic transaction generator, the bank ledger and Model A (Sequential) work. Models B and C, experiments and the dashboard are planned and not yet implemented. No experiments have been run, and this repository reports no results yet.
 
 ## Project overview
 
@@ -79,7 +79,7 @@ The data uses a fixed USD/JPY rate of 150.00. This is an illustrative simplifica
 | Component | Status |
 |---|---|
 | Synthetic transaction generator (`src/transactions.py`) | Implemented (Day 1, extended Day 5) |
-| Settlement simulator for Models A, B and C | Planned |
+| Settlement simulator (`src/simulator.py`) | Model A implemented (Day 6); Models B and C planned |
 | Metrics and experiments | Planned |
 | Streamlit dashboard | Planned |
 | Research report, policy brief, presentation | Planned |

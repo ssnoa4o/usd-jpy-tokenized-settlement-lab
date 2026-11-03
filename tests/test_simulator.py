@@ -1,10 +1,12 @@
 """Tests for the ledger and shared types, plus placeholders for the required engine tests."""
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from src.simulator import (
     Currency,
+    EventType,
     FailureReason,
     Leg,
     Ledger,
@@ -15,6 +17,7 @@ from src.simulator import (
     run_model,
     to_minor,
 )
+from src.transactions import bank_names, generate_transactions
 
 USD = Currency.USD
 JPY = Currency.JPY
@@ -298,6 +301,477 @@ def test_bad_seed_is_rejected(seed) -> None:
 def test_run_model_is_not_implemented_yet() -> None:
     with pytest.raises(NotImplementedError):
         run_model(None, Model.ATOMIC, SimulationParams(seed=1))
+
+
+# --- Model A (Sequential) ---
+
+TX_COLUMNS = [
+    "transaction_id",
+    "arrival_time",
+    "usd_payer",
+    "jpy_payer",
+    "usd_amount",
+    "jpy_amount",
+    "fx_rate",
+    "failure_draw",
+]
+# Seeds 1-30 are main experiment seeds and 101-110 calibration seeds; tests use others.
+TEST_SEEDS = [201, 202, 203, 204, 205]
+
+
+def tx(
+    transaction_id: int,
+    arrival_time: float,
+    usd_payer: str,
+    jpy_payer: str,
+    usd_amount: float,
+    jpy_amount: float,
+    failure_draw: float = 0.5,
+) -> dict:
+    """One transaction row. The default draw 0.5 never hits a failure probability <= 5%."""
+    return {
+        "transaction_id": transaction_id,
+        "arrival_time": arrival_time,
+        "usd_payer": usd_payer,
+        "jpy_payer": jpy_payer,
+        "usd_amount": usd_amount,
+        "jpy_amount": jpy_amount,
+        "fx_rate": 150.0,
+        "failure_draw": failure_draw,
+    }
+
+
+def frame(*rows: dict) -> pd.DataFrame:
+    return pd.DataFrame(list(rows), columns=TX_COLUMNS)
+
+
+def params_a(**changes) -> SimulationParams:
+    """Small balances: every bank starts with USD 1,000 and JPY 150,000."""
+    values = {
+        "seed": 1,
+        "initial_usd": 1_000,
+        "initial_jpy": 150_000,
+        "delay_seconds": 60,
+        "failure_probability": 0.01,
+    }
+    return SimulationParams(**(values | changes))
+
+
+def run_a(*rows: dict, **changes) -> tuple[list[SettlementResult], Ledger]:
+    return run_model(frame(*rows), Model.SEQUENTIAL, params_a(**changes))
+
+
+def balances(ledger: Ledger, banks: tuple[str, ...] = ("A", "B")) -> dict[str, float]:
+    """Balances in whole currency units, keyed like 'A USD'."""
+    return {
+        f"{bank} {currency}": ledger.balance(bank, currency) / 100
+        for currency in Currency
+        for bank in banks
+    }
+
+
+def test_model_a_settled_moves_both_legs_after_the_delay() -> None:
+    results, ledger = run_a(tx(1, 0.0, "A", "B", 100, 15_000))
+    (r,) = results
+    assert r.model == Model.SEQUENTIAL
+    assert (r.status, r.failure_reason) == (Status.SETTLED, None)
+    assert (r.usd_leg_done, r.jpy_leg_done) == (True, True)
+    assert (r.arrival_time, r.start_time, r.end_time) == (0.0, 0.0, 60.0)
+    assert r.principal_exposure_usd == 0.0
+    assert balances(ledger) == {
+        "A USD": 900, "B USD": 1_100, "A JPY": 165_000, "B JPY": 135_000,
+    }  # fmt: skip
+
+
+def test_model_a_second_leg_technical_failure_leaves_partial() -> None:
+    results, ledger = run_a(tx(1, 5.0, "A", "B", 100, 15_000, failure_draw=0.005))
+    (r,) = results
+    assert (r.status, r.failure_reason) == (Status.PARTIAL, FailureReason.TECHNICAL_FAILURE)
+    assert (r.usd_leg_done, r.jpy_leg_done) == (True, False)
+    assert (r.arrival_time, r.start_time, r.end_time) == (5.0, 5.0, 65.0)
+    assert r.principal_exposure_usd == 100.0
+    assert balances(ledger) == {
+        "A USD": 900, "B USD": 1_100, "A JPY": 150_000, "B JPY": 150_000,
+    }  # fmt: skip
+
+
+def test_model_a_first_leg_shortage_fails_and_moves_nothing() -> None:
+    results, ledger = run_a(tx(1, 5.0, "A", "B", 1_001, 15_000))
+    (r,) = results
+    assert (r.status, r.failure_reason) == (Status.FAILED, FailureReason.INSUFFICIENT_FUNDS)
+    assert (r.usd_leg_done, r.jpy_leg_done) == (False, False)
+    assert (r.arrival_time, r.start_time, r.end_time) == (5.0, 5.0, 5.0)
+    assert r.principal_exposure_usd == 0.0
+    assert balances(ledger) == {
+        "A USD": 1_000, "B USD": 1_000, "A JPY": 150_000, "B JPY": 150_000,
+    }  # fmt: skip
+
+
+def test_model_a_second_leg_shortage_leaves_partial() -> None:
+    results, ledger = run_a(tx(1, 0.0, "A", "B", 100, 150_001))
+    (r,) = results
+    assert (r.status, r.failure_reason) == (Status.PARTIAL, FailureReason.INSUFFICIENT_FUNDS)
+    assert (r.usd_leg_done, r.jpy_leg_done) == (True, False)
+    assert (r.start_time, r.end_time) == (0.0, 60.0)
+    assert r.principal_exposure_usd == 100.0
+    assert balances(ledger) == {
+        "A USD": 900, "B USD": 1_100, "A JPY": 150_000, "B JPY": 150_000,
+    }  # fmt: skip
+
+
+def test_model_a_failure_hit_and_shortage_together_is_technical_failure() -> None:
+    results, _ = run_a(tx(1, 0.0, "A", "B", 100, 150_001, failure_draw=0.0))
+    (r,) = results
+    assert (r.status, r.failure_reason) == (Status.PARTIAL, FailureReason.TECHNICAL_FAILURE)
+
+
+def test_model_a_failure_draw_equal_to_probability_is_not_a_hit() -> None:
+    results, _ = run_a(tx(1, 0.0, "A", "B", 100, 15_000, failure_draw=0.01))
+    assert results[0].status == Status.SETTLED
+
+
+def test_model_a_probability_zero_never_hits() -> None:
+    rows = [tx(1, 0.0, "A", "B", 10, 1_500, failure_draw=0.0)]
+    rows.append(tx(2, 10.0, "A", "B", 10, 1_500, failure_draw=1e-12))
+    results, _ = run_a(*rows, failure_probability=0.0)
+    assert [r.status for r in results] == [Status.SETTLED, Status.SETTLED]
+
+
+def test_model_a_exact_balance_payment_succeeds() -> None:
+    results, ledger = run_a(tx(1, 0.0, "A", "B", 1_000, 150_000))
+    assert results[0].status == Status.SETTLED
+    assert balances(ledger) == {
+        "A USD": 0, "B USD": 2_000, "A JPY": 300_000, "B JPY": 0,
+    }  # fmt: skip
+
+
+def test_model_a_jpy_not_yet_received_cannot_be_spent_during_the_delay() -> None:
+    # Tx 2 pays A its JPY at t=70, but tx 1's second leg needs A's JPY at t=60.
+    results, ledger = run_a(
+        tx(1, 0.0, "B", "A", 10, 1_500),
+        tx(2, 10.0, "A", "B", 4, 600),
+        initial_usd=1_000,
+        initial_jpy=1_000,
+    )
+    first, second = results
+    assert (first.status, first.failure_reason) == (
+        Status.PARTIAL,
+        FailureReason.INSUFFICIENT_FUNDS,
+    )
+    assert first.end_time == 60.0
+    assert first.principal_exposure_usd == 10.0
+    assert (second.status, second.end_time) == (Status.SETTLED, 70.0)
+    assert balances(ledger) == {
+        "A USD": 1_006, "B USD": 994, "A JPY": 1_600, "B JPY": 400,
+    }  # fmt: skip
+
+
+def test_model_a_received_funds_are_usable_from_the_time_they_arrive() -> None:
+    # Tx 2 arrives at t=60, the same time as tx 1's second leg. USD that B received
+    # at t=0 is usable at once; JPY that A receives at t=60 is usable at t=120.
+    results, ledger = run_a(
+        tx(1, 0.0, "A", "B", 100, 15_000),
+        tx(2, 60.0, "B", "A", 1_100, 165_000),
+    )
+    assert [r.status for r in results] == [Status.SETTLED, Status.SETTLED]
+    assert [r.end_time for r in results] == [60.0, 120.0]
+    assert balances(ledger) == {
+        "A USD": 2_000, "B USD": 0, "A JPY": 0, "B JPY": 300_000,
+    }  # fmt: skip
+
+
+def test_model_a_second_leg_event_sorts_before_an_arrival_at_equal_time() -> None:
+    assert EventType.DELAYED_STEP < EventType.ARRIVAL
+
+
+def test_model_a_delay_zero_completes_both_legs_at_arrival() -> None:
+    results, ledger = run_a(
+        tx(1, 7.0, "A", "B", 100, 15_000),
+        tx(2, 7.0, "B", "A", 100, 165_000),
+        delay_seconds=0,
+    )
+    # Note: this does not discriminate second-leg vs arrival order. In Model A the two
+    # touch different currencies (JPY vs USD); the order becomes observable in Model B.
+    assert [r.status for r in results] == [Status.SETTLED, Status.SETTLED]
+    assert all(r.start_time == r.end_time == 7.0 for r in results)
+    assert balances(ledger) == {
+        "A USD": 1_000, "B USD": 1_000, "A JPY": 0, "B JPY": 300_000,
+    }  # fmt: skip
+
+
+def test_model_a_burst_arrival_is_served_in_transaction_id_order() -> None:
+    # Rows are listed in reverse order on purpose. USD 1,000 covers only one of the two.
+    # This tests the transaction_id tiebreak, not second-leg vs arrival order (see above).
+    results, ledger = run_a(
+        tx(2, 0.0, "A", "B", 600, 90_000),
+        tx(1, 0.0, "A", "B", 600, 90_000),
+    )
+    assert [r.transaction_id for r in results] == [1, 2]
+    assert results[0].status == Status.SETTLED
+    assert (results[1].status, results[1].failure_reason) == (
+        Status.FAILED,
+        FailureReason.INSUFFICIENT_FUNDS,
+    )
+    assert balances(ledger)["A USD"] == 400
+
+
+def test_model_a_same_time_second_legs_run_in_transaction_id_order() -> None:
+    # Both pay JPY from B at t=60; B holds 150,000 and each needs 100,000.
+    # This tests the transaction_id tiebreak, not second-leg vs arrival order (see above).
+    results, ledger = run_a(
+        tx(2, 0.0, "A", "B", 10, 100_000),
+        tx(1, 0.0, "A", "B", 10, 100_000),
+    )
+    assert [r.status for r in results] == [Status.SETTLED, Status.PARTIAL]
+    assert results[1].failure_reason == FailureReason.INSUFFICIENT_FUNDS
+    assert results[1].principal_exposure_usd == 10.0
+    assert balances(ledger)["B JPY"] == 50_000
+
+
+def test_model_a_with_three_banks_moves_only_the_named_banks() -> None:
+    results, ledger = run_a(tx(1, 0.0, "C", "A", 100, 15_000), n_banks=3)
+    assert results[0].status == Status.SETTLED
+    assert balances(ledger, ("A", "B", "C")) == {
+        "A USD": 1_100, "B USD": 1_000, "C USD": 900,
+        "A JPY": 135_000, "B JPY": 150_000, "C JPY": 165_000,
+    }  # fmt: skip
+
+
+def test_model_a_bank_in_no_transaction_still_counts_in_ledger_totals() -> None:
+    _, ledger = run_a(tx(1, 0.0, "A", "B", 100, 15_000), n_banks=4)
+    assert ledger.balance("D", USD) == to_minor(1_000)
+    assert ledger.total(USD) == 4 * to_minor(1_000)
+    assert ledger.total(JPY) == 4 * to_minor(150_000)
+
+
+@pytest.mark.parametrize("row", [tx(1, 0.0, "Z", "B", 1, 150), tx(1, 0.0, "A", "C", 1, 150)])
+def test_model_a_unknown_bank_raises_key_error(row: dict) -> None:
+    with pytest.raises(KeyError):
+        run_a(row)  # default n_banks = 2, so "C" and "Z" are unknown
+
+
+@pytest.mark.parametrize("n_banks", [1, 11, 0, 2.5, True, None])
+def test_bad_n_banks_is_rejected(n_banks) -> None:
+    with pytest.raises(ValueError):
+        SimulationParams(seed=1, n_banks=n_banks)
+
+
+def test_model_a_duplicate_transaction_id_raises() -> None:
+    with pytest.raises(ValueError):
+        run_a(tx(1, 0.0, "A", "B", 1, 150), tx(1, 10.0, "A", "B", 1, 150))
+
+
+def test_model_a_empty_input_gives_no_results_and_an_untouched_ledger() -> None:
+    results, ledger = run_a()
+    assert results == []
+    assert ledger.total(USD) == 2 * to_minor(1_000)
+    assert ledger.total(JPY) == 2 * to_minor(150_000)
+    assert [ledger.peak_drawdown(b, c) for b in ("A", "B") for c in Currency] == [0] * 4
+
+
+@pytest.mark.parametrize("model", [Model.PREFUNDED, Model.ATOMIC])
+def test_other_models_still_raise_not_implemented(model: Model) -> None:
+    with pytest.raises(NotImplementedError):
+        run_model(frame(tx(1, 0.0, "A", "B", 1, 150)), model, params_a())
+
+
+# Low liquidity so that shortages really occur: USD 1,000,000 per bank is at most
+# one large payment. Each case is (n_banks, arrival pattern).
+STRESS_CASES = [(2, "sequential"), (3, "burst"), (5, "sequential"), (10, "burst")]
+
+
+def stress_run(seed: int, n_banks: int, arrival: str, probability: float = 0.05):
+    data = generate_transactions(count=200, seed=seed, n_banks=n_banks, arrival=arrival)
+    params = SimulationParams(
+        seed=seed,
+        initial_usd=1_000_000,
+        initial_jpy=150_000_000,
+        failure_probability=probability,
+        n_banks=n_banks,
+    )
+    return data, params, run_model(data, Model.SEQUENTIAL, params)
+
+
+def expected_balances(data: pd.DataFrame, results, params) -> dict[tuple[str, Currency], int]:
+    """Rebuild every balance from the result flags, without using the ledger."""
+    expected = {
+        (bank, currency): to_minor(
+            params.initial_usd if currency == USD else params.initial_jpy
+        )
+        for bank in bank_names(params.n_banks)
+        for currency in Currency
+    }
+    rows = data.set_index("transaction_id")
+    for r in results:
+        row = rows.loc[r.transaction_id]
+        if r.usd_leg_done:
+            amount = to_minor(row["usd_amount"])
+            expected[(row["usd_payer"], USD)] -= amount
+            expected[(row["jpy_payer"], USD)] += amount
+        if r.jpy_leg_done:
+            amount = to_minor(row["jpy_amount"])
+            expected[(row["jpy_payer"], JPY)] -= amount
+            expected[(row["usd_payer"], JPY)] += amount
+    return expected
+
+
+@pytest.mark.parametrize("seed", TEST_SEEDS)
+@pytest.mark.parametrize(("n_banks", "arrival"), STRESS_CASES)
+def test_model_a_keeps_totals_and_status_consistent_under_stress(
+    seed: int, n_banks: int, arrival: str
+) -> None:
+    data, params, (results, ledger) = stress_run(seed, n_banks, arrival)
+    assert [r.transaction_id for r in results] == sorted(data["transaction_id"])
+    # Not vacuous: shortages happened.
+    assert any(r.failure_reason == FailureReason.INSUFFICIENT_FUNDS for r in results)
+    initial = {USD: to_minor(params.initial_usd), JPY: to_minor(params.initial_jpy)}
+    for currency in Currency:
+        assert ledger.total(currency) == n_banks * initial[currency]
+    for r in results:
+        legs = r.usd_leg_done + r.jpy_leg_done
+        assert (r.status == Status.SETTLED) == (legs == 2)
+        assert (r.status == Status.PARTIAL) == (legs == 1)
+        assert (r.status == Status.FAILED) == (legs == 0)
+        assert r.jpy_leg_done <= r.usd_leg_done  # the JPY leg never goes first
+    expected = expected_balances(data, results, params)
+    for (bank, currency), amount in expected.items():
+        assert ledger.balance(bank, currency) == amount
+        assert amount >= 0
+        # Peak drawdown stays within [0, initial] and covers the final drawdown.
+        peak = ledger.peak_drawdown(bank, currency)
+        assert max(0, initial[currency] - amount) <= peak <= initial[currency]
+        assert ledger.reserved(bank, currency) == 0
+
+
+def naive_model_a(data: pd.DataFrame, params: SimulationParams):
+    """Plain-dict Model A used as an oracle: no Ledger, no simulator helpers."""
+    bal = {}
+    for bank in bank_names(params.n_banks):
+        bal[(bank, "USD")] = to_minor(params.initial_usd)
+        bal[(bank, "JPY")] = to_minor(params.initial_jpy)
+    rows = {int(r.transaction_id): r for r in data.itertuples()}
+    todo = [(r.arrival_time, 1, tid) for tid, r in rows.items()]  # kind 0 = second leg
+    out = {}
+    while todo:
+        todo.sort()
+        now, kind, tid = todo.pop(0)
+        r = rows[tid]
+        usd, jpy = to_minor(r.usd_amount), to_minor(r.jpy_amount)
+        if kind == 1 and bal[(r.usd_payer, "USD")] < usd:
+            out[tid] = ("failed", "insufficient_funds")
+        elif kind == 1:
+            bal[(r.usd_payer, "USD")] -= usd
+            bal[(r.jpy_payer, "USD")] += usd
+            todo.append((now + params.delay_seconds, 0, tid))
+        elif r.failure_draw < params.failure_probability:
+            out[tid] = ("partial", "technical_failure")
+        elif bal[(r.jpy_payer, "JPY")] < jpy:
+            out[tid] = ("partial", "insufficient_funds")
+        else:
+            bal[(r.jpy_payer, "JPY")] -= jpy
+            bal[(r.usd_payer, "JPY")] += jpy
+            out[tid] = ("settled", None)
+    return out, bal
+
+
+def outcome_kind(status: Status, reason: FailureReason | None) -> str:
+    return f"{status}/{reason}"
+
+
+@pytest.mark.parametrize("seed", TEST_SEEDS)
+@pytest.mark.parametrize(("n_banks", "arrival"), STRESS_CASES)
+def test_model_a_matches_a_naive_oracle_and_failure_rules(
+    seed: int, n_banks: int, arrival: str
+) -> None:
+    data, params, (results, ledger) = stress_run(seed, n_banks, arrival)
+    expected, bal = naive_model_a(data, params)
+    draws = data.set_index("transaction_id")["failure_draw"]
+    for r in results:
+        assert (str(r.status), r.failure_reason and str(r.failure_reason)) == expected[
+            r.transaction_id
+        ]
+        hit = r.usd_leg_done and draws[r.transaction_id] < params.failure_probability
+        assert (r.failure_reason == FailureReason.TECHNICAL_FAILURE) == hit
+        if r.status == Status.FAILED:
+            assert r.failure_reason == FailureReason.INSUFFICIENT_FUNDS
+    for (bank, currency), amount in bal.items():
+        assert ledger.balance(bank, Currency(currency)) == amount
+
+
+def test_model_a_stress_cases_cover_all_four_outcomes() -> None:
+    kinds = set()
+    for seed in TEST_SEEDS:
+        for n_banks, arrival in STRESS_CASES:
+            _, _, (results, _) = stress_run(seed, n_banks, arrival)
+            kinds |= {outcome_kind(r.status, r.failure_reason) for r in results}
+    assert kinds == {
+        "failed/insufficient_funds",
+        "partial/insufficient_funds",
+        "partial/technical_failure",
+        "settled/None",
+    }
+
+
+def test_model_a_peak_drawdown_is_not_the_sum_of_payments() -> None:
+    # Bank A's USD: pays 100 (drawdown 100), receives 50 (50), pays 30 (80). Peak stays 100.
+    results, ledger = run_a(
+        tx(1, 0.0, "A", "B", 100, 15_000),
+        tx(2, 10.0, "B", "A", 50, 7_500),
+        tx(3, 20.0, "A", "B", 30, 4_500),
+    )
+    assert all(r.status == Status.SETTLED for r in results)
+    assert ledger.balance("A", USD) == to_minor(920)
+    assert ledger.peak_drawdown("A", USD) == to_minor(100)
+
+
+@pytest.mark.parametrize("column", ["failure_draw", "arrival_time"])
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_model_a_non_finite_draw_or_time_raises(column: str, bad: float) -> None:
+    row = tx(1, 0.0, "A", "B", 1, 150) | {column: bad}
+    with pytest.raises(ValueError):
+        run_a(row)
+
+
+@pytest.mark.parametrize("seed", TEST_SEEDS)
+def test_model_a_same_data_and_params_give_identical_results(seed: int) -> None:
+    data, params, (results, ledger) = stress_run(seed, 3, "burst")
+    results_again, ledger_again = run_model(data, Model.SEQUENTIAL, params)
+    assert results == results_again
+    assert expected_balances(data, results, params) == expected_balances(
+        data, results_again, params
+    )
+    assert [ledger.balance(b, c) for b in "ABC" for c in Currency] == [
+        ledger_again.balance(b, c) for b in "ABC" for c in Currency
+    ]
+
+
+@pytest.mark.parametrize("seed", TEST_SEEDS)
+def test_model_a_does_not_change_the_input_data(seed: int) -> None:
+    data = generate_transactions(count=100, seed=seed, n_banks=3)
+    before = data.copy()
+    run_model(data, Model.SEQUENTIAL, SimulationParams(seed=seed, n_banks=3))
+    pd.testing.assert_frame_equal(data, before)
+
+
+@pytest.mark.parametrize("seed", TEST_SEEDS)
+def test_model_a_exposure_does_not_fall_as_failure_probability_rises(seed: int) -> None:
+    data = generate_transactions(count=500, seed=seed)
+    totals = []
+    for probability in (0.0, 0.01, 0.05):
+        params = SimulationParams(
+            seed=seed,
+            initial_usd=1e12,
+            initial_jpy=1.5e14,
+            failure_probability=probability,
+        )
+        results, _ = run_model(data, Model.SEQUENTIAL, params)
+        assert all(r.failure_reason != FailureReason.INSUFFICIENT_FUNDS for r in results)
+        totals.append(sum(r.principal_exposure_usd for r in results))
+        hit_amounts = data.loc[data["failure_draw"] < probability, "usd_amount"]
+        assert totals[-1] == pytest.approx(hit_amounts.sum())
+    assert totals[0] == 0.0
+    assert totals[0] <= totals[1] <= totals[2]
+    assert totals[2] > totals[0]
 
 
 # --- Required engine tests (methodology sec. 7) ---

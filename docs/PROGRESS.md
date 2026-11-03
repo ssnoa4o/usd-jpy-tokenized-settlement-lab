@@ -91,3 +91,19 @@
 - 検査（追加作業）: 引用 18 件とハッシュ値 7 件を原文と照合して一致。`integrity-checker` 1 回、高の指摘なし。`sources.md` 内の指摘を修正（修正後の再検査はしていない）。
 - 未完了（追加作業）: `literature_review.md` の修正案 13 件はユーザー承認のうえ適用済み。再検査で高の指摘なし。追加の修正案もユーザー承認のうえ適用済み（最終の文面には `integrity-checker` を再実行していない）。CLS-4 の引用は言い換えに変更。HTML 要約由来の逐語引用は、Day 20 までに原文で再確認が必要。BIS-2 と BOJ-10、BCBS-1 は一部のみ読了。BOJ-7 は第 VII 章のみ。BOJ-X3（2026 年 3 月の発表）と BIS-FAQ の日付は UNVERIFIED のまま。CLS-4 には複写や共有を制限する権利表示がある（PDF p.8）。引用は短くし、PDF は再配布しない。
 - 次の日（Day 6）: Model A Sequential を実装する。2 レッグの時間差、partial、元本エクスポージャー、残高更新。
+
+## Day 6 — Model A (Sequential)
+- 完了: `src/simulator.py` の `run_model` に Model A を実装。`heapq` のイベントループ（時刻、種類、`transaction_id` の順）、USD レッグは到着時、JPY レッグは到着 + 遅延。第 2 レッグは障害判定を資金より先に見る。Model B / C は `NotImplementedError` のまま。
+- 完了: `tests/test_simulator.py` に Model A のテストを追加。pytest は 187 passed / 7 skipped。skip は B / C も対象の必須テストで、Day 7〜8 に実装する。`scripts/precommit_check.sh` は問題なし。
+- 完了: `research/methodology.md`（状態行、sec. 3 の `end_time`、sec. 11）と `README.md` の状態表示を更新。
+- 判断（Claude）: `SimulationParams` に `n_banks`（既定 2）を追加し、銀行一覧はここから作る。`end_time` は `failed` なら到着時刻、`partial` / `settled` なら第 2 レッグの処理時刻。`start_time` は到着時刻。実行全体の集計は Day 9。`failure_draw` / `arrival_time` が NaN や inf なら `ValueError`。
+- 発見: 同時刻の「第 2 レッグ」と「新しい到着」の順序は、Model A では結果を変えない。第 2 レッグは JPY だけ、到着は USD だけを動かすため。`reviewer` が順序を逆にしたコピーで比較し、差は 0 件。今はこの順序を定数の比較でしか確かめていないので、Day 7 に Model B で動作として確かめる。
+- 検査: わざと壊す確認（判定順、`<` と `<=`、受取先、同時刻の順序、遅延の削除、第 2 レッグの資金判定）はすべてテストが検知し、コードは元に戻した。ただし第 2 レッグと到着の順序を逆にする変更は、定数を比べるテストでしか検知できない。
+- 検査: `reviewer` 1 回。高の指摘なし。中 2 件（資金やレッグの判定を独立に確かめていない、エクスポージャーが単調性のみ）と低 3 件（誤解を招くコメント、ピーク値の手計算テスト、NaN）を修正。独立に書いた素朴な Model A との比較テストを追加した。
+- 未完了 / 既知の制限:
+  - 修正後に `reviewer` は再実行していない（pytest とわざと壊す確認は実施）。`integrity-checker` は Day 6 の文書変更に未実施で、Week 1 ゲートで確認する。
+  - Day 7: `_sequential_result` は Model A 専用。イベントループも `_run_sequential` の中にある。B / C を足すときに一般化する。
+  - Day 9: `principal_exposure_usd` は入力の浮動小数のままで、小数 3 桁以上の手書きデータでは台帳の移動額とずれる。生成データは 2 桁なので今は一致する。
+  - 小数の遅延（例: 0.1 秒）では同時刻の判定に浮動小数の誤差が入る。実験の水準（0, 60, 300 秒）では起きない。
+  - 流動性の較正は 3 モデルが必要なので未実施。実験も未実施で、`results/` に CSV はない。
+- 次の日（Day 7）: Model B（事前資金確保）と Model C（両レッグの一括コミット）を実装する。同時刻の順序を Model B の動作テストで確かめる。
