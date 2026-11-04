@@ -153,3 +153,32 @@
   - sec. 9 に小数の遅延の浮動小数の制限を 1 行足す。
   - 設計上の予測（B の Proxy ≥ A など）を結果の証拠として書かない（今は問題なし）。
 - 翌日（Day 8）の最初にやること: 文書の中 1 件と低 4 件を直す（methodology のみ。コードは変えない）。直したあと `integrity-checker` で確認する。そのあと HANDOFF の Day 8 に進む。
+
+## Day 8 — Week 1 ゲートの文書修正と決済テストの強化
+- 完了（文書）: `research/methodology.md` の Week 1 ゲートの指摘（中 1 件・低 4 件）を直した。コードは変えていない。
+  - sec. 7: 「割合の合計 = 1」は skip 中で、Day 9 に `src/metrics.py` と一緒に実装すると明記。
+  - sec. 2: `model` 列の値（`sequential` / `prefunded` / `atomic`）を明記。
+  - sec. 3: `start_time` は全モデルで到着時刻、とまとめた。
+  - sec. 9: 小数の遅延では浮動小数の誤差で同時刻の規則が効かないことがある、と 1 行追加。
+  - sec. 11: Day 6 の記述に「Day 7 の Model B の動作テストで確認（手作業で順序を逆にして失敗を確認）」を追記。
+  - Status 行を Day 8 にした。`README.md` の状態表示も Day 8 にした。
+- 検査（文書）: `integrity-checker` 1 回。高・中 0 件、低 2 件（README の Day 表示、「手作業で確認」の明記）を修正。修正後の再検査はしていない。
+- 完了（テスト）: `tests/test_simulator.py` にテストを追加。`src/` は変えていない（バグは見つからなかった）。
+  - `naive_model_b` / `naive_model_c`: Ledger を使わない素朴な B / C。ストレス条件 × 障害確率 3 水準 × 遅延 {0, 60, 300} 秒で、取引ごとの状態・理由・レッグの完了フラグ・`end_time`、銀行・通貨ごとの最終残高と peak drawdown がエンジンと一致することを確認（`test_models_b_and_c_match_their_naive_oracles_under_stress`）。peak はイベントごとに全口座で計算し直し、エンジンの更新の仕方をまねない。
+  - 3 モデル共通: 銀行・通貨ごとに `balance >= 0`、`max(0, 初期 - 最終) <= peak <= 初期`、`reserved == 0`（`test_every_bank_balance_and_peak_drawdown_stay_in_range_under_stress`）。
+  - モデルごとの結果の種類（`EXPECTED_OUTCOMES`）: A は 4 種、B は settled / failed-insufficient_funds / partial-technical_failure、C は settled / failed-insufficient_funds / failed-technical_failure。`timeout` は出ない。B の `failed` はすべて `insufficient_funds`。
+  - B で失敗した取引を入力から外しても、ほかの結果・残高・peak が変わらない（C 版はすでにあった）。
+  - `test_status_matches_legs_done_in_every_run` に「JPY のレッグが USD より先に完了しない」を追加。
+  - pytest は 960 passed / 1 skipped（skip は Day 9 の「割合の合計 = 1」）。`scripts/precommit_check.sh` は問題なし。
+- 検査（わざと壊す確認）: B で障害時に JPY の予約を解除しない、C で USD を検証前に反映する、B で USD を予約でなく通常の残高から払う、B で予約失敗時に USD を予約してから戻す（Day 7 より前の動き）、の 4 種をすべて新しいテストが検知した。コードは元に戻し、`git diff --stat src/` が空であることを確認した。最後の 1 種は、最初はオラクル比較で検知できなかった（最終残高しか比べていなかったため）。peak も比べるようにして、オラクル比較でも検知できるようになった。
+- 検査（コード）: `reviewer` 3 回（抜けの洗い出し、追加テストのレビュー、再レビュー）。高 0 件。2 回目の中 3 件のうち 2 件（オラクルで peak とフラグ・`end_time` を比べる）と低 3 件を修正した。再レビューでは高・中 0 件。
+- 判断（Claude）: 結果の種類のテストは、全シードと全ケースをまとめた集合で比べる。1 ケースで種類が欠けても検知しないが、ケースごとの結果はオラクル比較が照合する。
+- 未完了 / 既知の制限:
+  - B のオラクルは、1 つのイベントが終わったあとにだけ peak を更新する。今は同じイベント内で同じ口座に支払いと受け取りが両方入ることはないので、差は出ない。`usd_payer == jpy_payer` を許す変更が入ったら見直す。
+  - 文書の最後の修正（README、methodology sec. 11 の言い回し）のあと、`integrity-checker` は再実行していない。
+  - 流動性の較正（methodology sec. 6）は未実施。実験も未実施で、`results/` に CSV はない。
+- 次の日（Day 9）: `src/metrics.py` に Success / Partial / Failure Rate、Principal Exposure、失敗理由別の集計を実装する。Week 1 ゲートで Day 9 に回した、コードの低い指摘 3 件も行う。
+  - skip 中の「割合の合計 = 1」のテストを解除する。
+  - 割合の関数が partial を成功に数えないことを、直接確かめるテストを足す。
+  - `usd_payer == jpy_payer` などの入力の確認を `_read_transactions` に前倒しする。
+  - 較正をいつ行うかを決める。

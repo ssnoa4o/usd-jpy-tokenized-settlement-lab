@@ -1,5 +1,7 @@
 """Tests for the ledger and shared types, plus placeholders for the required engine tests."""
 
+import dataclasses
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -1160,6 +1162,142 @@ def test_failed_model_c_transaction_leaves_every_balance_unchanged(
 
 
 @pytest.mark.parametrize("seed", TEST_SEEDS)
+@pytest.mark.parametrize(("n_banks", "arrival"), STRESS_CASES)
+def test_failed_model_b_transaction_leaves_every_balance_unchanged(
+    seed: int, n_banks: int, arrival: str
+) -> None:
+    # B fails only at arrival, before anything is reserved, so removing a failed
+    # transaction must not change any other result, balance or peak drawdown.
+    data, params = case_inputs(seed, n_banks, arrival, 0.05, ample=False)
+    results, ledger = run_model(data, Model.PREFUNDED, params)
+    failed = [r for r in results if r.status == Status.FAILED]
+    # Not vacuous: failures happened, and in B they are always shortages.
+    assert failed
+    assert {r.failure_reason for r in failed} == {FailureReason.INSUFFICIENT_FUNDS}
+    failed_ids = {r.transaction_id for r in failed}
+    without = data[~data["transaction_id"].isin(failed_ids)]
+    results_without, ledger_without = run_model(without, Model.PREFUNDED, params)
+    assert results_without == [r for r in results if r.transaction_id not in failed_ids]
+    for bank in bank_names(n_banks):
+        for currency in Currency:
+            assert ledger.balance(bank, currency) == ledger_without.balance(bank, currency)
+            assert ledger.peak_drawdown(bank, currency) == ledger_without.peak_drawdown(
+                bank, currency
+            )
+            assert ledger.reserved(bank, currency) == 0
+            assert ledger_without.reserved(bank, currency) == 0
+
+
+# The oracles below use list sort + pop(0) instead of heapq on purpose, to stay independent of the engine.
+def naive_model_b(data: pd.DataFrame, params: SimulationParams):
+    """Plain-dict Model B used as an oracle: no Ledger, no simulator helpers.
+
+    Returns (outcomes, balances, peak drawdowns). Each outcome is
+    (kind, usd_leg_done, jpy_leg_done, end_time).
+    """
+    bal, held, start, peak = {}, {}, {}, {}
+    for bank in bank_names(params.n_banks):
+        for cur in ("USD", "JPY"):
+            bal[(bank, cur)] = to_minor(params.initial_usd if cur == "USD" else params.initial_jpy)
+            held[(bank, cur)] = 0
+            start[(bank, cur)] = bal[(bank, cur)]
+            peak[(bank, cur)] = 0
+    rows = {int(r.transaction_id): r for r in data.itertuples()}
+    todo = [(r.arrival_time, 1, tid) for tid, r in rows.items()]  # kind 0 = second leg
+    out = {}
+    while todo:
+        todo.sort()
+        now, kind, tid = todo.pop(0)
+        r = rows[tid]
+        usd, jpy = to_minor(r.usd_amount), to_minor(r.jpy_amount)
+        usd_free = bal[(r.usd_payer, "USD")] - held[(r.usd_payer, "USD")]
+        jpy_free = bal[(r.jpy_payer, "JPY")] - held[(r.jpy_payer, "JPY")]
+        if kind == 1 and (usd_free < usd or jpy_free < jpy):
+            # A failed reservation must move nothing (methodology sec. 11, Day 7 decision):
+            # no USD reserve-then-release, so no peak drawdown either.
+            out[tid] = ("failed/insufficient_funds", False, False, now)
+        elif kind == 1:
+            held[(r.jpy_payer, "JPY")] += jpy  # reserve the JPY leg
+            bal[(r.usd_payer, "USD")] -= usd  # USD leg is paid at once from its reservation
+            bal[(r.jpy_payer, "USD")] += usd
+            todo.append((now + params.delay_seconds, 0, tid))
+        elif r.failure_draw < params.failure_probability:
+            held[(r.jpy_payer, "JPY")] -= jpy  # release the reservation
+            out[tid] = ("partial/technical_failure", True, False, now)
+        else:
+            held[(r.jpy_payer, "JPY")] -= jpy
+            bal[(r.jpy_payer, "JPY")] -= jpy
+            bal[(r.usd_payer, "JPY")] += jpy
+            out[tid] = ("settled/None", True, True, now)
+        # After every event, recompute drawdown for ALL accounts and keep the maximum.
+        for key in bal:
+            peak[key] = max(peak[key], start[key] - (bal[key] - held[key]))
+    return out, bal, peak
+
+
+def naive_model_c(data: pd.DataFrame, params: SimulationParams):
+    """Plain-dict Model C used as an oracle: no Ledger, no simulator helpers.
+
+    Returns (outcomes, balances, peak drawdowns), same shape as naive_model_b.
+    """
+    bal, start, peak = {}, {}, {}
+    for bank in bank_names(params.n_banks):
+        bal[(bank, "USD")] = to_minor(params.initial_usd)
+        bal[(bank, "JPY")] = to_minor(params.initial_jpy)
+    for key in bal:
+        start[key] = bal[key]
+        peak[key] = 0
+    rows = {int(r.transaction_id): r for r in data.itertuples()}
+    # Nothing happens at arrival, so every commit is one event at arrival + delay.
+    todo = [(r.arrival_time + params.delay_seconds, tid) for tid, r in rows.items()]
+    todo.sort()
+    out = {}
+    for now, tid in todo:
+        r = rows[tid]
+        usd, jpy = to_minor(r.usd_amount), to_minor(r.jpy_amount)
+        if bal[(r.usd_payer, "USD")] < usd or bal[(r.jpy_payer, "JPY")] < jpy:
+            out[tid] = ("failed/insufficient_funds", False, False, now)
+        elif r.failure_draw < params.failure_probability:
+            out[tid] = ("failed/technical_failure", False, False, now)
+        else:
+            bal[(r.usd_payer, "USD")] -= usd
+            bal[(r.jpy_payer, "USD")] += usd
+            bal[(r.jpy_payer, "JPY")] -= jpy
+            bal[(r.usd_payer, "JPY")] += jpy
+            out[tid] = ("settled/None", True, True, now)
+        # After every event, recompute drawdown for ALL accounts and keep the maximum.
+        for key in bal:
+            peak[key] = max(peak[key], start[key] - bal[key])
+    return out, bal, peak
+
+
+NAIVE_MODELS = {Model.PREFUNDED: naive_model_b, Model.ATOMIC: naive_model_c}
+
+
+@pytest.mark.parametrize("delay_seconds", [0, 60, 300])
+@pytest.mark.parametrize("model", [Model.PREFUNDED, Model.ATOMIC])
+@pytest.mark.parametrize("seed", TEST_SEEDS)
+@pytest.mark.parametrize(("n_banks", "arrival"), STRESS_CASES)
+@pytest.mark.parametrize("probability", PROBABILITIES)
+def test_models_b_and_c_match_their_naive_oracles_under_stress(
+    model: Model, seed: int, n_banks: int, arrival: str, probability: float, delay_seconds: int
+) -> None:
+    data, params = case_inputs(seed, n_banks, arrival, probability, ample=False)
+    params = dataclasses.replace(params, delay_seconds=delay_seconds)
+    results, ledger = run_model(data, model, params)
+    expected, bal, peak = NAIVE_MODELS[model](data, params)
+    assert len(results) == len(expected) == len(data)
+    for r in results:
+        kind, usd_done, jpy_done, end_time = expected[r.transaction_id]
+        assert outcome_kind(r.status, r.failure_reason) == kind
+        assert (r.usd_leg_done, r.jpy_leg_done) == (usd_done, jpy_done)
+        assert r.end_time == end_time
+    for (bank, currency), amount in bal.items():
+        assert ledger.balance(bank, Currency(currency)) == amount
+        assert ledger.peak_drawdown(bank, Currency(currency)) == peak[(bank, currency)]
+
+
+@pytest.mark.parametrize("seed", TEST_SEEDS)
 @pytest.mark.parametrize(("n_banks", "arrival"), AMPLE_CASES)
 def test_a_and_b_have_same_exposure_without_insufficient_funds(
     seed: int, n_banks: int, arrival: str
@@ -1210,6 +1348,7 @@ def test_status_matches_legs_done_in_every_run(
                 assert (r.status == Status.PARTIAL) == (legs == 1)
                 assert (r.status == Status.FAILED) == (legs == 0)
                 assert (r.failure_reason is None) == (r.status == Status.SETTLED)
+                assert r.jpy_leg_done <= r.usd_leg_done  # the JPY leg never goes first
 
 
 @pytest.mark.skip(reason="Rates are metrics; they are implemented on Day 9 (src/metrics.py)")
@@ -1244,6 +1383,63 @@ def test_nothing_is_left_reserved_and_balances_match_the_result_flags(
     for (bank, currency), amount in expected.items():
         assert ledger.reserved(bank, currency) == 0
         assert ledger.balance(bank, currency) == amount
+
+
+@pytest.mark.parametrize("model", ALL_MODELS)
+@pytest.mark.parametrize("seed", TEST_SEEDS)
+@pytest.mark.parametrize(("n_banks", "arrival"), STRESS_CASES)
+def test_every_bank_balance_and_peak_drawdown_stay_in_range_under_stress(
+    model: Model, seed: int, n_banks: int, arrival: str
+) -> None:
+    data, params = case_inputs(seed, n_banks, arrival, 0.05, ample=False)
+    results, ledger = run_model(data, model, params)
+    assert has_shortage(results)  # Not vacuous: the stressed case has shortages.
+    initial = {USD: to_minor(params.initial_usd), JPY: to_minor(params.initial_jpy)}
+    for bank in bank_names(n_banks):
+        for currency in Currency:
+            balance = ledger.balance(bank, currency)
+            peak = ledger.peak_drawdown(bank, currency)
+            assert balance >= 0
+            assert max(0, initial[currency] - balance) <= peak <= initial[currency]
+            assert ledger.reserved(bank, currency) == 0
+
+
+EXPECTED_OUTCOMES = {
+    Model.SEQUENTIAL: {
+        "failed/insufficient_funds",
+        "partial/insufficient_funds",
+        "partial/technical_failure",
+        "settled/None",
+    },
+    Model.PREFUNDED: {
+        "settled/None",
+        "failed/insufficient_funds",
+        "partial/technical_failure",
+    },
+    Model.ATOMIC: {
+        "settled/None",
+        "failed/insufficient_funds",
+        "failed/technical_failure",
+    },
+}
+
+
+@pytest.mark.parametrize("model", ALL_MODELS)
+def test_stress_cases_produce_exactly_the_expected_outcomes_per_model(model: Model) -> None:
+    kinds = set()
+    for seed in TEST_SEEDS:
+        for n_banks, arrival in STRESS_CASES:
+            data, params = case_inputs(seed, n_banks, arrival, 0.05, ample=False)
+            results, _ = run_model(data, model, params)
+            kinds |= {outcome_kind(r.status, r.failure_reason) for r in results}
+            assert not any(r.failure_reason == FailureReason.TIMEOUT for r in results)
+            if model == Model.PREFUNDED:
+                assert all(
+                    r.failure_reason == FailureReason.INSUFFICIENT_FUNDS
+                    for r in results
+                    if r.status == Status.FAILED
+                )
+    assert kinds == EXPECTED_OUTCOMES[model]
 
 
 @pytest.mark.parametrize("model", ALL_MODELS)

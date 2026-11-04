@@ -2,7 +2,7 @@
 
 Open-source research and simulation framework for tokenized USD/JPY foreign exchange settlement.
 
-> **Status: early draft (Day 7 of a 21-day plan).** The synthetic transaction generator, the bank ledger and the three settlement models (A: Sequential, B: Prefunded Tokenized, C: Atomic PvP) work. Experiments and the dashboard are planned and not yet implemented. No experiments have been run, and this repository reports no results yet.
+> **Status: early draft (Day 8 of a 21-day plan).** The synthetic transaction generator, the bank ledger and the three settlement models (A: Sequential, B: Prefunded Tokenized, C: Atomic PvP) work, and each model is checked against an independent plain-Python reference implementation in the tests. Experiments and the dashboard are planned and not yet implemented. No experiments have been run, and this repository reports no results yet.
 
 ## Project overview
 

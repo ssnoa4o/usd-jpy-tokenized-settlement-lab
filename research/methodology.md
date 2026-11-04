@@ -1,6 +1,6 @@
 # Methodology (draft)
 
-Status: Day 7 draft, 2026-11-03. The transaction generator and Models A, B and C exist. No experiment has been run. This file is the single place for definitions, so code, tests, report and slides use the same words. If code and this file disagree, fix one and record the change.
+Status: Day 8 draft, 2026-11-03. The transaction generator and Models A, B and C exist. No experiment has been run. This file is the single place for definitions, so code, tests, report and slides use the same words. If code and this file disagree, fix one and record the change.
 
 This is an independent research prototype on synthetic data. No institution (BIS, BoJ, CLS, OSFI or any other) has reviewed, approved or endorsed it.
 
@@ -12,7 +12,7 @@ We compare three simplified settlement models on the same synthetic USD/JPY tran
 
 ## 2. Model definitions
 
-All models: banks hold separate USD and JPY balances. Every transaction has a USD payer and a JPY payer. FX rate is fixed at 150.00 (DV) in the base case; this is an illustration, not a market claim. What the models are not is listed in sec. 10.
+All models: banks hold separate USD and JPY balances. Every transaction has a USD payer and a JPY payer. FX rate is fixed at 150.00 (DV) in the base case; this is an illustration, not a market claim. What the models are not is listed in sec. 10. In code and in result files, the `model` column uses the values `sequential` (A), `prefunded` (B) and `atomic` (C).
 
 | | A: Sequential | B: Prefunded Tokenized | C: Atomic PvP |
 |---|---|---|---|
@@ -29,7 +29,7 @@ Key distinction: **Prefunding and Atomic PvP are different concepts.** Prefundin
 
 Input record (`src/transactions.py`): `transaction_id`, `arrival_time` (simulation seconds), `usd_payer`, `jpy_payer` (bank names A to J), `usd_amount`, `jpy_amount` (= usd_amount x fx_rate, rounded to 2 decimals), `fx_rate`, `failure_draw` (sec. 7). Amounts, bank pairs and failure draws use separate random streams, so changing the number of banks does not change the amounts or failure draws. Arrival times are deterministic and use no random stream (sec. 4). Within a seed, a larger volume keeps the earlier rows unchanged.
 
-Result record per transaction: `transaction_id`, `model`, `status`, `failure_reason`, `usd_leg_done`, `jpy_leg_done`, `arrival_time`, `start_time`, `end_time`, `principal_exposure_usd`. In Model A, `start_time` equals `arrival_time` (there is no queue). `end_time` is `arrival_time` for a transaction that `failed` at its first leg, and the time of the second-leg attempt (arrival + delay) for `partial` and `settled`. Model B uses the same rule: `end_time` is `arrival_time` if the reservation fails, and arrival + delay otherwise. In Model C, `start_time` equals `arrival_time` and `end_time` is arrival + delay for every outcome, because validation and commit happen once at that time.
+Result record per transaction: `transaction_id`, `model`, `status`, `failure_reason`, `usd_leg_done`, `jpy_leg_done`, `arrival_time`, `start_time`, `end_time`, `principal_exposure_usd`. In all three models, `start_time` equals `arrival_time` (there is no queue). In Model A, `end_time` is `arrival_time` for a transaction that `failed` at its first leg, and the time of the second-leg attempt (arrival + delay) for `partial` and `settled`. Model B uses the same rule: `end_time` is `arrival_time` if the reservation fails, and arrival + delay otherwise. In Model C, `end_time` is arrival + delay for every outcome, because validation and commit happen once at that time.
 
 The engine's ledger stores money as integers in hundredths of a currency unit, so exact-boundary balance checks and "identical in every seed" verdicts are not affected by floating-point noise.
 
@@ -113,7 +113,7 @@ For each transaction one uniform draw `failure_draw` in [0, 1) is taken once fro
 - When no `insufficient_funds` occurs in A or B, they have identical amount-based Principal Exposure.
 - In A and B, at ample liquidity with no `insufficient_funds`, Principal Exposure does not fall as Failure Probability rises (with nested draws), and with 500 transactions (DV) it is higher at 5% than at 0%. Otherwise there is a bug. Under liquidity stress this need not hold, because a hit changes later balances.
 - `settled` iff both legs done; `partial` iff exactly one; `failed` iff none.
-- Success + Partial + Failure rates sum to 1 (N > 0).
+- Success + Partial + Failure rates sum to 1 (N > 0). This test is currently skipped; it is implemented on Day 9 together with the rate functions in `src/metrics.py`.
 - Total USD and total JPY across banks are unchanged by any run.
 
 ## 8. Reproducibility
@@ -135,6 +135,7 @@ For each transaction one uniform draw `failure_draw` in [0, 1) is taken once fro
 - Amount-based Principal Exposure ignores delay directly, so delay can change it only through balances (second-leg shortages). H4b may therefore show little or no difference.
 - Liquidity is set per bank, so adding banks raises total liquidity and spreads flows. The bank-count effect on L\* is not a pure effect of participant numbers.
 - Average Settlement Time and Operational Delay follow from the injected delay, so they do not compare the models' operational performance. That comparison rests on success, partial and failure rates under stress.
+- Fractional delays (for example 0.1 s) can break the same-time ordering rule in sec. 7 through floating-point error in arrival + delay. The experiment levels (0, 60, 300 s with integer arrival times) are not affected.
 
 ## 10. Exclusions / out of scope
 
@@ -160,7 +161,7 @@ Decided on Day 4, before any experiment (all values DV):
 7. With more than 2 banks, the two banks are drawn uniformly at random per transaction (sec. 4).
 8. H2's primary comparison is the B minus A proxy gap at 300 s vs 0 s delay; C vs A becomes exploratory. H4b's primary metric is amount-based Principal Exposure. Both changed after the Day 4 review, before any experiment (`hypotheses.md`).
 
-Decided on Day 6, before any experiment: the number of banks is a run parameter (`n_banks`), and the ledger's bank list comes from it, not from the transaction rows, so a bank with no transactions still counts in total liquidity. In Model A a second leg moves only JPY and an arrival moves only USD, so their same-time order in sec. 7 cannot change a Model A result; it matters from Model B onward.
+Decided on Day 6, before any experiment: the number of banks is a run parameter (`n_banks`), and the ledger's bank list comes from it, not from the transaction rows, so a bank with no transactions still counts in total liquidity. In Model A a second leg moves only JPY and an arrival moves only USD, so their same-time order in sec. 7 cannot change a Model A result; it matters from Model B onward. This was confirmed on Day 7 by behaviour tests in Model B: reversing the order made those tests fail in a manual check on Day 7 (sec. 7, processing rules).
 
 Decided on Day 7, before any experiment: Model B checks that both reservations fit before making either. If one does not fit, nothing is reserved, so a failed reservation changes no balance, no reserved amount and no peak drawdown (the same validate-then-apply shape as Model C). Without this rule, a USD reservation made and then released in the same step would raise the Peak Liquidity Proxy of B for a transaction that moved nothing.
 
