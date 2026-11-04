@@ -1,10 +1,12 @@
 """Shared types and the bank ledger for the three settlement models.
 
-Definitions follow research/methodology.md. Model A (sequential) is implemented;
-Models B and C are added on Day 7-8.
+Definitions follow research/methodology.md. All three models run through one event
+loop (_run_events) and differ only in two handlers: what happens at arrival and what
+happens at the delayed step (second leg for A and B, the commit for C).
 """
 
 import heapq
+from collections.abc import Callable
 import math
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum
@@ -195,13 +197,25 @@ class Ledger:
         self._apply(leg)
         return True
 
-    def commit_both(self, first: Leg, second: Leg) -> bool:
-        """Validate both legs, then apply both. If either is short, change nothing."""
+    def can_reserve_both(self, first: Leg, second: Leg) -> bool:
+        """Check that both payers could set the leg amounts aside now. Changes nothing."""
+        return self._can_pay_both(first, second)
+
+    def can_commit_both(self, first: Leg, second: Leg) -> bool:
+        """Check that both legs could be paid now. Changes nothing."""
+        return self._can_pay_both(first, second)
+
+    def _can_pay_both(self, first: Leg, second: Leg) -> bool:
+        """Shared check: valid legs in different currencies, both payers have enough."""
         _check_leg(first, self._balance)
         _check_leg(second, self._balance)
         if first.currency == second.currency:
             raise ValueError("the two legs must use different currencies")
-        if any(self.available(leg.payer, leg.currency) < leg.amount for leg in (first, second)):
+        return all(self.available(leg.payer, leg.currency) >= leg.amount for leg in (first, second))
+
+    def commit_both(self, first: Leg, second: Leg) -> bool:
+        """Validate both legs, then apply both. If either is short, change nothing."""
+        if not self.can_commit_both(first, second):
             return False
         self._apply(first)
         self._apply(second)
@@ -252,10 +266,8 @@ class _Transaction(NamedTuple):
 def run_model(
     transactions: pd.DataFrame, model: Model, params: SimulationParams
 ) -> tuple[list[SettlementResult], Ledger]:
-    """Run one settlement model over the transactions. Only Model A exists so far."""
-    if model != Model.SEQUENTIAL:
-        raise NotImplementedError("Models B and C are implemented on Day 7-8")
-    return _run_sequential(transactions, params)
+    """Run one settlement model (A, B or C) over the transactions."""
+    return _run_events(transactions, params, model)
 
 
 def _new_ledger(params: SimulationParams) -> Ledger:
@@ -297,55 +309,146 @@ def _jpy_leg(tx: _Transaction) -> Leg:
     return Leg(tx.jpy_payer, tx.usd_payer, Currency.JPY, tx.jpy_minor)
 
 
-def _run_sequential(
-    data: pd.DataFrame, params: SimulationParams
+# A handler returns the final result, or None if the transaction waits for its delayed step.
+Handler = Callable[[_Transaction, float, SimulationParams, Ledger], SettlementResult | None]
+
+
+def _run_events(
+    data: pd.DataFrame, params: SimulationParams, model: Model
 ) -> tuple[list[SettlementResult], Ledger]:
-    """Model A: USD leg at arrival, JPY leg one delay later, no queue and no retry."""
+    """Process arrivals and delayed steps in order (time, event type, transaction_id)."""
     ledger = _new_ledger(params)
     if data.empty:
         return [], ledger
+    on_arrival, on_delayed_step = _HANDLERS[model]
     transactions = _read_transactions(data)
-    # Events are ordered by (time, event type, transaction_id).
     events = [(tx.arrival_time, EventType.ARRIVAL, tid) for tid, tx in transactions.items()]
     heapq.heapify(events)
     results = {}
     while events:
         time, kind, tid = heapq.heappop(events)
-        tx = transactions[tid]
-        if kind == EventType.ARRIVAL:
-            if ledger.transfer(_usd_leg(tx)):
-                later = time + params.delay_seconds
-                heapq.heappush(events, (later, EventType.DELAYED_STEP, tid))
-            else:
-                short = FailureReason.INSUFFICIENT_FUNDS
-                results[tid] = _sequential_result(tx, Status.FAILED, short, time)
+        handler = on_arrival if kind == EventType.ARRIVAL else on_delayed_step
+        result = handler(transactions[tid], time, params, ledger)
+        if result is not None:
+            results[tid] = result
+        elif kind == EventType.ARRIVAL:
+            later = time + params.delay_seconds
+            heapq.heappush(events, (later, EventType.DELAYED_STEP, tid))
         else:
-            results[tid] = _finish_second_leg(tx, time, params, ledger)
+            raise RuntimeError("a delayed step must finish the transaction")
     return [results[tid] for tid in sorted(results)], ledger
 
 
-def _finish_second_leg(
+# --- Model A: sequential ---
+
+
+def _a_arrival(
+    tx: _Transaction, time: float, params: SimulationParams, ledger: Ledger
+) -> SettlementResult | None:
+    """USD leg at arrival. If the payer is short, the transaction fails."""
+    if ledger.transfer(_usd_leg(tx)):
+        return None
+    short = FailureReason.INSUFFICIENT_FUNDS
+    return _make_result(tx, Model.SEQUENTIAL, Status.FAILED, short, False, False, time)
+
+
+def _a_delayed_step(
     tx: _Transaction, time: float, params: SimulationParams, ledger: Ledger
 ) -> SettlementResult:
     """Second leg of Model A. The failure draw is checked before the funds."""
+    model = Model.SEQUENTIAL
     if tx.failure_draw < params.failure_probability:
-        return _sequential_result(tx, Status.PARTIAL, FailureReason.TECHNICAL_FAILURE, time)
+        reason = FailureReason.TECHNICAL_FAILURE
+        return _make_result(tx, model, Status.PARTIAL, reason, True, False, time)
     if not ledger.transfer(_jpy_leg(tx)):
-        return _sequential_result(tx, Status.PARTIAL, FailureReason.INSUFFICIENT_FUNDS, time)
-    return _sequential_result(tx, Status.SETTLED, None, time)
+        reason = FailureReason.INSUFFICIENT_FUNDS
+        return _make_result(tx, model, Status.PARTIAL, reason, True, False, time)
+    return _make_result(tx, model, Status.SETTLED, None, True, True, time)
 
 
-def _sequential_result(
-    tx: _Transaction, status: Status, reason: FailureReason | None, end_time: float
+# --- Model B: prefunded ---
+
+
+def _b_arrival(
+    tx: _Transaction, time: float, params: SimulationParams, ledger: Ledger
+) -> SettlementResult | None:
+    """Check both legs first, then reserve both and pay the USD leg. A shortage changes nothing."""
+    usd_leg, jpy_leg = _usd_leg(tx), _jpy_leg(tx)
+    if not ledger.can_reserve_both(usd_leg, jpy_leg):
+        short = FailureReason.INSUFFICIENT_FUNDS
+        return _make_result(tx, Model.PREFUNDED, Status.FAILED, short, False, False, time)
+    for leg in (usd_leg, jpy_leg):
+        if not ledger.reserve(leg.payer, leg.currency, leg.amount):
+            raise RuntimeError("reservation failed after the check passed")
+    ledger.transfer(usd_leg, from_reserved=True)
+    return None
+
+
+def _b_delayed_step(
+    tx: _Transaction, time: float, params: SimulationParams, ledger: Ledger
 ) -> SettlementResult:
-    """Build the result. The USD leg is done unless the transaction failed at arrival."""
+    """Second leg of Model B. On a failure draw the JPY reservation is released."""
+    model = Model.PREFUNDED
+    jpy_leg = _jpy_leg(tx)
+    if tx.failure_draw < params.failure_probability:
+        ledger.release(jpy_leg.payer, jpy_leg.currency, jpy_leg.amount)
+        reason = FailureReason.TECHNICAL_FAILURE
+        return _make_result(tx, model, Status.PARTIAL, reason, True, False, time)
+    ledger.transfer(jpy_leg, from_reserved=True)  # cannot be short: the funds are reserved
+    return _make_result(tx, model, Status.SETTLED, None, True, True, time)
+
+
+# --- Model C: atomic PvP ---
+
+
+def _c_arrival(
+    tx: _Transaction, time: float, params: SimulationParams, ledger: Ledger
+) -> SettlementResult | None:
+    """Nothing is checked or reserved at arrival; the commit runs one delay later."""
+    return None
+
+
+def _c_delayed_step(
+    tx: _Transaction, time: float, params: SimulationParams, ledger: Ledger
+) -> SettlementResult:
+    """Validate both legs (funds first, then the failure draw), then commit both at once."""
+    model = Model.ATOMIC
+    usd_leg, jpy_leg = _usd_leg(tx), _jpy_leg(tx)
+    if not ledger.can_commit_both(usd_leg, jpy_leg):
+        reason = FailureReason.INSUFFICIENT_FUNDS
+        return _make_result(tx, model, Status.FAILED, reason, False, False, time)
+    if tx.failure_draw < params.failure_probability:
+        reason = FailureReason.TECHNICAL_FAILURE
+        return _make_result(tx, model, Status.FAILED, reason, False, False, time)
+    if not ledger.commit_both(usd_leg, jpy_leg):
+        raise RuntimeError("commit failed after the check passed")
+    return _make_result(tx, model, Status.SETTLED, None, True, True, time)
+
+
+_HANDLERS: dict[Model, tuple[Handler, Handler]] = {
+    Model.SEQUENTIAL: (_a_arrival, _a_delayed_step),
+    Model.PREFUNDED: (_b_arrival, _b_delayed_step),
+    Model.ATOMIC: (_c_arrival, _c_delayed_step),
+}
+
+
+def _make_result(
+    tx: _Transaction,
+    model: Model,
+    status: Status,
+    reason: FailureReason | None,
+    usd_done: bool,
+    jpy_done: bool,
+    end_time: float,
+) -> SettlementResult:
+    """Build the result. start_time is the arrival time (there is no queue)."""
     return SettlementResult(
         transaction_id=tx.transaction_id,
-        model=Model.SEQUENTIAL,
+        model=model,
         status=status,
         failure_reason=reason,
-        usd_leg_done=status != Status.FAILED,
-        jpy_leg_done=status == Status.SETTLED,
+        usd_leg_done=usd_done,
+        jpy_leg_done=jpy_done,
         arrival_time=tx.arrival_time,
         start_time=tx.arrival_time,
         end_time=end_time,

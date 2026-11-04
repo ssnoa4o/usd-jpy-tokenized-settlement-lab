@@ -107,3 +107,49 @@
   - 小数の遅延（例: 0.1 秒）では同時刻の判定に浮動小数の誤差が入る。実験の水準（0, 60, 300 秒）では起きない。
   - 流動性の較正は 3 モデルが必要なので未実施。実験も未実施で、`results/` に CSV はない。
 - 次の日（Day 7）: Model B（事前資金確保）と Model C（両レッグの一括コミット）を実装する。同時刻の順序を Model B の動作テストで確かめる。
+
+## Day 7 — Model B (Prefunded) and Model C (Atomic PvP)
+- 完了: `src/simulator.py` に Model B と Model C を実装。イベントループは `_run_events` に、結果の作成は `_make_result` にまとめ、3 モデルで共通にした。モデルごとの処理は「到着時」と「遅延後」の 2 つの関数に分けた（`_HANDLERS`）。`run_model` は 3 モデルすべてを動かす（`NotImplementedError` は削除）。
+  - Model B: 到着時に両レッグの予約ができるかを `Ledger.can_reserve_both` で先に確かめ、両方できるときだけ予約する。USD レッグはすぐ予約分から払う。到着 + 遅延で障害に当たれば JPY の予約を解除して `partial / technical_failure`、当たらなければ JPY を予約分から払って `settled`。
+  - Model C: 到着時は何もしない。到着 + 遅延に 1 回だけ、① `Ledger.can_commit_both` で両レッグの資金を確認 ② 障害の判定 ③ `commit_both` で一括反映、の順。失敗したときは残高・予約・ピークのどれも変わらない。
+- 完了: `tests/test_simulator.py` に B / C の手計算テスト、境界テスト（draw = p は当たりにならない、p = 1、遅延 0 の同時刻、n_banks = 3 で関係のない銀行が変わらない）、Model B の同時刻の順序を確かめる動作テストを追加。skip だった必須テスト 7 件のうち 6 件を実装。pytest は 517 passed / 1 skipped（skip は Day 9 の「割合の合計 = 1」）。`scripts/precommit_check.sh` は問題なし。
+- 完了: `research/methodology.md`（状態行、sec. 2 の C の書き方、sec. 3 の B / C の `start_time` / `end_time`、sec. 11 の Day 7 の決定）と `README.md` の状態表示を更新。
+- 判断（ユーザー承認、実験前）: Model B は予約の前に両方を確かめる。前の実装では、JPY が足りないときに USD を予約してから戻していた。そのため、何も動かなかった取引でも USD のピークが上がり、資金が足りない条件では B の Peak Liquidity Proxy が実装の都合で大きく出るおそれがあった。
+- 判断（Claude）: C の `commit_both` と B の `reserve` が、確認のあとに False を返した場合は `RuntimeError` にする（何も動かずに `settled` と記録されるのを防ぐ）。
+- 発見: 同時刻の順序（遅延後の処理が新しい到着より先）は Model B で結果を変える。動作テスト 3 件で確かめた（順序を逆にした変更をテストが検知した）。
+- 検査: わざと壊す確認（C で障害の判定を資金より先にする、B で USD を先に予約する、イベント順を逆にする、C で片方のレッグを先に動かす、`<` を `<=` にする）はすべてテストが検知し、コードは元に戻した。
+- 検査: `reviewer` 2 回。1 回目は高の指摘なし。中 2 件（B のピーク、B / C の境界テスト）と低 1 件（`commit_both` の戻り値）を修正した。2 回目は高・中の指摘なし。低 1 件（methodology sec. 2 の「コピーで確認」という古い書き方）を修正した。
+- 未完了 / 既知の制限:
+  - 小数の遅延では、`time + delay` の浮動小数の誤差で同時刻の順序の規則が効かないことがある。実験の水準（0, 60, 300 秒、整数の到着時刻）では起きない。
+  - 0.005 未満の金額は整数にすると 0 になり、エラーになる。生成データでは起きない。
+  - `integrity-checker` は Day 6〜7 の文書の変更に未実施。Week 1 ゲートで行う。
+  - 流動性の較正（methodology sec. 6）は 3 モデルがそろったのでできるようになったが、未実施。実験も未実施で、`results/` に CSV はない。
+- 次の日（Day 8）: Week 1 ゲート（`/gate 1`）を確認する。HANDOFF の Day 8（残高更新、残高不足、部分決済、障害、Atomic のロールバックのテスト）のうち、まだ足りないものを足す。較正をいつ行うかを決める。
+
+## Week 1 ゲート（Day 7 終了時、2026-11-03）
+- 実施: `reviewer`（コード・テスト）と `integrity-checker`（文書の整合性。Day 4〜7 に先送りしていた分を含む）。作業ツリーは Day 7 の変更が未 commit の状態で検査した。pytest 517 passed / 1 skipped、`scripts/precommit_check.sh` 問題なし。
+
+| 項目 | 判定 | 根拠 |
+|---|---|---|
+| 同じ取引データを 3 モデルに入れられる | PASS | `run_model` が 3 モデルとも動く。サンプル 100 件で実行し、全モデルで USD・JPY の合計が変わらない |
+| 各モデルの残高更新と状態を確認できる | PASS | `Ledger` の残高・予約・ピーク、`SettlementResult`。A / B / C それぞれの手計算テストあり |
+| settled / partial / failed を区別できる | PASS | `SettlementResult` の検査と `test_status_matches_legs_done_in_every_run`（3 モデル） |
+| Atomic の失敗で片側だけ残高が変わらないことをテストできる | PASS | `test_model_c_failure_leaves_every_balance_reservation_and_peak_unchanged`（6 パターン）、`test_failed_model_c_transaction_leaves_every_balance_unchanged` |
+| Streamlit・スライドに時間を使いすぎない | PASS | `dashboard/`・`presentation/` は空 |
+| HANDOFF 13 Technical | PASS | 残高更新・部分決済・失敗・Atomic の不可分性のテストあり |
+| methodology sec. 7 の必須テスト | PASS（1 件は延期を明示） | 7 件中 6 件実装。「割合の合計 = 1」は Day 9 まで skip |
+| `results/` に実験の出力がない | PASS | `figures/.gitkeep` のみ |
+| Integrity（仮想データ、仮定、限界、出典、非公式であること） | PASS | README、methodology、hypotheses、research_question に記載あり |
+
+- 指摘: 高 0 件。中 1 件: methodology sec. 7 の一覧に、「割合の合計 = 1」が skip 中（Day 9 で実装）であることが書かれていない。
+- 指摘（低、コード）:
+  - skip 中のテストを Day 9 で必ず解除する。
+  - Day 9 で、partial を成功に含めないテストを割合の関数に直接足す。
+  - `usd_payer == jpy_payer` の行は実行の途中でエラーになる。入力の確認を `_read_transactions` に前倒しすると安全。生成データでは起きない。
+- 指摘（低、文書）:
+  - methodology sec. 2 に model 列の値（sequential / prefunded / atomic）を書く。
+  - sec. 3 の `start_time` を「全モデルで到着時刻」とまとめる。
+  - sec. 11 の Day 6 の記述に「Model B のテストで確認済み」を足す。
+  - sec. 9 に小数の遅延の浮動小数の制限を 1 行足す。
+  - 設計上の予測（B の Proxy ≥ A など）を結果の証拠として書かない（今は問題なし）。
+- 翌日（Day 8）の最初にやること: 文書の中 1 件と低 4 件を直す（methodology のみ。コードは変えない）。直したあと `integrity-checker` で確認する。そのあと HANDOFF の Day 8 に進む。
