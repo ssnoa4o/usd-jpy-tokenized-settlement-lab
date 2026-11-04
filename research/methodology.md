@@ -1,6 +1,6 @@
 # Methodology (draft)
 
-Status: Day 8 draft, 2026-11-03. The transaction generator and Models A, B and C exist. No experiment has been run. This file is the single place for definitions, so code, tests, report and slides use the same words. If code and this file disagree, fix one and record the change.
+Status: Day 9 draft, 2026-11-03. The transaction generator, Models A, B and C, and the Day 9 metrics (sec. 5: rates, counts by reason, Principal Exposure) exist. No experiment has been run. This file is the single place for definitions, so code, tests, report and slides use the same words. If code and this file disagree, fix one and record the change.
 
 This is an independent research prototype on synthetic data. No institution (BIS, BoJ, CLS, OSFI or any other) has reviewed, approved or endorsed it.
 
@@ -32,6 +32,8 @@ Input record (`src/transactions.py`): `transaction_id`, `arrival_time` (simulati
 Result record per transaction: `transaction_id`, `model`, `status`, `failure_reason`, `usd_leg_done`, `jpy_leg_done`, `arrival_time`, `start_time`, `end_time`, `principal_exposure_usd`. In all three models, `start_time` equals `arrival_time` (there is no queue). In Model A, `end_time` is `arrival_time` for a transaction that `failed` at its first leg, and the time of the second-leg attempt (arrival + delay) for `partial` and `settled`. Model B uses the same rule: `end_time` is `arrival_time` if the reservation fails, and arrival + delay otherwise. In Model C, `end_time` is arrival + delay for every outcome, because validation and commit happen once at that time.
 
 The engine's ledger stores money as integers in hundredths of a currency unit, so exact-boundary balance checks and "identical in every seed" verdicts are not affected by floating-point noise.
+
+Input rows are checked before any event runs, so a run never stops halfway: an unknown bank raises `KeyError`; the same bank as USD payer and JPY payer, a non-finite amount, time or failure draw, or an amount that is zero or negative after rounding to hundredths raises `ValueError`. The generated data never contains such rows.
 
 | State | Meaning |
 |---|---|
@@ -113,7 +115,7 @@ For each transaction one uniform draw `failure_draw` in [0, 1) is taken once fro
 - When no `insufficient_funds` occurs in A or B, they have identical amount-based Principal Exposure.
 - In A and B, at ample liquidity with no `insufficient_funds`, Principal Exposure does not fall as Failure Probability rises (with nested draws), and with 500 transactions (DV) it is higher at 5% than at 0%. Otherwise there is a bug. Under liquidity stress this need not hold, because a hit changes later balances.
 - `settled` iff both legs done; `partial` iff exactly one; `failed` iff none.
-- Success + Partial + Failure rates sum to 1 (N > 0). This test is currently skipped; it is implemented on Day 9 together with the rate functions in `src/metrics.py`.
+- Success + Partial + Failure rates sum to 1 (N > 0).
 - Total USD and total JPY across banks are unchanged by any run.
 
 ## 8. Reproducibility
@@ -164,5 +166,7 @@ Decided on Day 4, before any experiment (all values DV):
 Decided on Day 6, before any experiment: the number of banks is a run parameter (`n_banks`), and the ledger's bank list comes from it, not from the transaction rows, so a bank with no transactions still counts in total liquidity. In Model A a second leg moves only JPY and an arrival moves only USD, so their same-time order in sec. 7 cannot change a Model A result; it matters from Model B onward. This was confirmed on Day 7 by behaviour tests in Model B: reversing the order made those tests fail in a manual check on Day 7 (sec. 7, processing rules).
 
 Decided on Day 7, before any experiment: Model B checks that both reservations fit before making either. If one does not fit, nothing is reserved, so a failed reservation changes no balance, no reserved amount and no peak drawdown (the same validate-then-apply shape as Model C). Without this rule, a USD reservation made and then released in the same step would raise the Peak Liquidity Proxy of B for a transaction that moved nothing.
+
+Decided on Day 9, before any experiment: the metric functions in `src/metrics.py` take the results of one run of one model and reject mixed models. Counts by failure reason list every reason, including `timeout` as 0. Duration-weighted Principal Exposure takes `usd_amount` from the input rows by `transaction_id`, so the result record is unchanged. In A and B the first leg (USD) completes at arrival, so a `settled` transaction's window is `end_time` - `arrival_time`.
 
 Still to do after all three models exist: run the liquidity calibration (sec. 6) under the rules fixed there.

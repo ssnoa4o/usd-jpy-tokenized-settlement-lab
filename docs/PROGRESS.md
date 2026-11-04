@@ -183,3 +183,26 @@
   - `usd_payer == jpy_payer` などの入力の確認を `_read_transactions` に前倒しする。
 - 決定（ユーザー、Day 8 終了後）: 流動性の較正（methodology sec. 6）は **Day 10 の最後**に行う。シード 101〜110 だけを使い、`results/calibration.csv` を作る。Day 11 の baseline の前に終える。Day 7 に「Day 8 で決める」としていたのを、Day 8 の作業中に決めずに先送りしていたので、ここで決めた。
 - 記録: Day 8 の時点で、較正も本番の実験も一度も実行していない。本番のシード（1〜30）も較正のシード（101〜110）もまだ使っていない。テストが使うシードは 201〜205 で、どちらとも重ならない。`results/` は空（`figures/` のみ）。
+
+## Day 9 — 指標（metrics.py）と Week 1 ゲートのコード指摘 3 件
+- 完了: `src/metrics.py` を実装。どの関数も「1 つのモデルの 1 回の実行」の結果を受け取る。
+  - `count_states`（N と settled / partial / failed の件数）、`settlement_rates`（Success / Partial / Failure Rate。Success は settled だけ。N = 0 は NaN）。
+  - `count_by_reason`: `n_<状態>_<理由>`（partial / failed 別）と `n_<理由>`。`timeout` も 0 として出す。
+  - `principal_exposure_usd`（partial の `usd_amount` の合計）と `principal_exposure_usd_seconds`（時間加重。A / B の settled は `end_time - arrival_time`、partial は W、C と failed は 0）。
+  - `calculate_metrics`: 上をまとめて 1 行の dict にする（将来の `run_metrics.csv` の 1 行）。
+  - `check_one_run`: モデルが混ざった結果や、同じ `transaction_id` の重複は `ValueError`。
+- 完了（Week 1 ゲートで Day 9 に回したコードの指摘 3 件）:
+  - skip 中だった `test_success_partial_and_failure_rates_sum_to_one` を実装（3 モデル × シード 201〜205 × ストレス 4 条件 × 流動性 2 × 障害確率 3）。skip は 0 件になった。
+  - partial を成功に数えないことを、割合の関数で直接確かめるテストを追加（全件 partial で success_rate = 0、settled 1 件を partial にすると success_rate が下がる）。
+  - 入力の確認を `_read_transactions` / `_check_row` に前倒し。知らない銀行は `KeyError`、`usd_payer == jpy_payer`、有限でない金額、丸めて 0 以下になる金額は `ValueError`。イベントを 1 つも処理する前に止まる。Day 7 の既知の制限「0.005 未満の金額は途中でエラー」も解消した。
+- 判断（Claude、計画で提示しユーザー承認）: 時間加重の Principal Exposure に必要な `usd_amount` は、`SettlementResult` に足さずに、入力の DataFrame から `transaction_id` で引く。結果の形を変えないため。Day 10 の Gross Prefunding も同じ方法を使う。
+- 完了（文書）: `research/methodology.md`（Status 行、sec. 3 に入力の確認、sec. 7 の「skip 中」を削除、sec. 11 に Day 9 の決定）と `README.md` の状態表示を Day 9 にした。
+- 検査（わざと壊す確認）: 9 種類のうち 8 種類をテストが検知（success に partial を足す、N = 0 で 0、partial を「settled 以外」で数える、C の窓を数える、モデル混在の確認を外す、銀行・同じ payer・金額の確認を外す）。残る 1 種類（金額ベースの exposure で partial に絞らない）は、`SettlementResult` が partial 以外の exposure を 0 に強制しているので結果が変わらない改変。コードは元に戻したことを確認した。
+- 検査: `reviewer` 1 回目は高 0 件・中 1 件（時間加重のテストがすべて到着 0 秒で、`end_time - arrival_time` の誤りを検知できない）・低 3 件（A / B の実行で時間加重を確かめるテストがない、inf の金額が `OverflowError` になる、知らない銀行のテストが `run_model` を通っていない）。すべて修正した。`integrity-checker`（Day 8 で未実施だった再検査を含む）は高・中 0 件、低 3 件。入力の確認の説明（負の金額、エラーの種類）を直した。残りの 1 件（キューを入れると窓の定義を見直す必要がある）は、今はキューがないので記録だけにした。
+- 検査: 修正後に `reviewer` で再レビュー。高・中 0 件、新しい問題なし。低 1 件（金額の有限性の確認と `_check_row` が別の場所にある。動作には影響なし）は今は直さない。
+- pytest: 1062 passed / 0 skipped。`scripts/precommit_check.sh` は問題なし。
+- 未完了 / 既知の制限:
+  - 時間加重の窓は「USD レッグが到着時に完了する」ことを前提にしている（A / B）。待ち行列を入れる場合は見直す。
+  - 流動性と時間の指標（Gross Prefunding、Peak Liquidity Proxy、Average Settlement Time、Liquidity Utilization）は Day 10。
+  - 較正も実験も未実施。`results/` は `figures/` のみ。
+- 次の日（Day 10）: 残りの指標を `src/metrics.py` に足す。最後に流動性の較正（シード 101〜110）を行い、`results/calibration.csv` を作る。

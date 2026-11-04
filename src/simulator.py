@@ -279,12 +279,18 @@ def _new_ledger(params: SimulationParams) -> Ledger:
     return Ledger(bank_names(params.n_banks), initial)
 
 
-def _read_transactions(data: pd.DataFrame) -> dict[int, _Transaction]:
-    """Copy the rows into plain values. The DataFrame itself is not changed."""
+def _read_transactions(data: pd.DataFrame, banks: list[str]) -> dict[int, _Transaction]:
+    """Copy the rows into plain values and check every row before any event runs.
+
+    A bad row raises here, so a run never stops halfway with some legs already moved.
+    The DataFrame itself is not changed.
+    """
     if data["transaction_id"].duplicated().any():
         raise ValueError("transaction_id must be unique")
     rows = {}
     for row in data.itertuples(index=False):
+        if not (math.isfinite(float(row.usd_amount)) and math.isfinite(float(row.jpy_amount))):
+            raise ValueError("usd_amount and jpy_amount must be finite numbers")
         tx = _Transaction(
             transaction_id=int(row.transaction_id),
             arrival_time=float(row.arrival_time),
@@ -295,10 +301,22 @@ def _read_transactions(data: pd.DataFrame) -> dict[int, _Transaction]:
             jpy_minor=to_minor(float(row.jpy_amount)),
             failure_draw=float(row.failure_draw),
         )
-        if not math.isfinite(tx.failure_draw) or not math.isfinite(tx.arrival_time):
-            raise ValueError("arrival_time and failure_draw must be finite numbers")
+        _check_row(tx, banks)
         rows[tx.transaction_id] = tx
     return rows
+
+
+def _check_row(tx: _Transaction, banks: list[str]) -> None:
+    """Reject a row that would otherwise fail only when its leg is processed."""
+    if not math.isfinite(tx.failure_draw) or not math.isfinite(tx.arrival_time):
+        raise ValueError("arrival_time and failure_draw must be finite numbers")
+    for bank in (tx.usd_payer, tx.jpy_payer):
+        if bank not in banks:
+            raise KeyError(f"unknown bank: {bank}")
+    if tx.usd_payer == tx.jpy_payer:
+        raise ValueError("usd_payer and jpy_payer must be different banks")
+    if tx.usd_minor <= 0 or tx.jpy_minor <= 0:
+        raise ValueError("amounts must be at least 0.01 after rounding to hundredths")
 
 
 def _usd_leg(tx: _Transaction) -> Leg:
@@ -321,7 +339,7 @@ def _run_events(
     if data.empty:
         return [], ledger
     on_arrival, on_delayed_step = _HANDLERS[model]
-    transactions = _read_transactions(data)
+    transactions = _read_transactions(data, bank_names(params.n_banks))
     events = [(tx.arrival_time, EventType.ARRIVAL, tid) for tid, tx in transactions.items()]
     heapq.heapify(events)
     results = {}

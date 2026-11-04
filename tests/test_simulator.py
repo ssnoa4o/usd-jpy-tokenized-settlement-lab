@@ -1,11 +1,18 @@
-"""Tests for the ledger and shared types, plus placeholders for the required engine tests."""
+"""Tests for the ledger, shared types and the three settlement models (required tests too)."""
 
 import dataclasses
+import math
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from src.metrics import (
+    count_states,
+    principal_exposure_usd,
+    principal_exposure_usd_seconds,
+    settlement_rates,
+)
 from src.simulator import (
     Currency,
     EventType,
@@ -16,6 +23,7 @@ from src.simulator import (
     SettlementResult,
     SimulationParams,
     Status,
+    _read_transactions,
     run_model,
     to_minor,
 )
@@ -550,6 +558,56 @@ def test_model_a_unknown_bank_raises_key_error(row: dict) -> None:
 def test_bad_n_banks_is_rejected(n_banks) -> None:
     with pytest.raises(ValueError):
         SimulationParams(seed=1, n_banks=n_banks)
+
+
+BAD_ROWS = [
+    tx(1, 0.0, "A", "A", 1, 150),  # the same bank pays both legs
+    tx(1, 0.0, "A", "B", 0.004, 150),  # USD amount rounds to 0 hundredths
+    tx(1, 0.0, "A", "B", 1, 0.004),  # JPY amount rounds to 0 hundredths
+    tx(1, 0.0, "A", "B", -1, 150),
+    tx(1, 0.0, "A", "B", float("inf"), 150),
+    tx(1, 0.0, "A", "B", 1, float("nan")),
+]
+
+
+@pytest.mark.parametrize("model", [Model.SEQUENTIAL, Model.PREFUNDED, Model.ATOMIC])
+@pytest.mark.parametrize("bad", BAD_ROWS)
+def test_bad_row_is_rejected_when_the_input_is_read(model: Model, bad: dict) -> None:
+    # The bad row arrives last, after a good row that would otherwise settle first.
+    data = frame(tx(2, 0.0, "A", "B", 1, 150), bad | {"arrival_time": 1_000.0})
+    before = data.copy()
+    with pytest.raises(ValueError):
+        _read_transactions(data, ["A", "B"])  # rejected before any event runs
+    with pytest.raises(ValueError):
+        run_model(data, model, params_a())
+    pd.testing.assert_frame_equal(data, before)
+
+
+@pytest.mark.parametrize("model", [Model.SEQUENTIAL, Model.PREFUNDED, Model.ATOMIC])
+def test_unknown_bank_is_rejected_when_the_input_is_read(model: Model) -> None:
+    data = frame(tx(1, 0.0, "A", "B", 1, 150), tx(2, 1_000.0, "A", "C", 1, 150))
+    with pytest.raises(KeyError):
+        _read_transactions(data, ["A", "B"])
+    with pytest.raises(KeyError):
+        run_model(data, model, params_a())
+
+
+@pytest.mark.parametrize("model", [Model.SEQUENTIAL, Model.PREFUNDED])
+def test_duration_weighted_exposure_of_a_and_b_runs_by_hand(model: Model) -> None:
+    # 1 settles (window = delay 60), 2 is hit by the failure draw (partial, window W),
+    # 3 fails on funds (no window). Arrival times are not 0, so the window must start there.
+    data = frame(
+        tx(1, 100.0, "A", "B", 10, 1_500),
+        tx(2, 200.0, "B", "A", 20, 3_000, failure_draw=0.001),
+        tx(3, 300.0, "A", "B", 5_000, 750_000),
+    )
+    params = params_a(cutoff_seconds=1_000)
+    results, _ = run_model(data, model, params)
+    assert [r.status for r in results] == [Status.SETTLED, Status.PARTIAL, Status.FAILED]
+    assert principal_exposure_usd(results) == 20
+    assert principal_exposure_usd_seconds(results, data, params.cutoff_seconds) == (
+        10 * 60 + 20 * 1_000
+    )
 
 
 def test_model_a_duplicate_transaction_id_raises() -> None:
@@ -1134,6 +1192,10 @@ def test_model_c_has_no_partial_and_no_exposure(
         assert not any(r.status == Status.PARTIAL for r in results)
         assert exposure(results) == 0.0
         assert all(r.principal_exposure_usd == 0.0 for r in results)
+        # The same, read through the metric functions.
+        assert count_states(results)["n_partial"] == 0
+        assert principal_exposure_usd(results) == 0.0
+        assert principal_exposure_usd_seconds(results, data, params.cutoff_seconds) == 0.0
 
 
 @pytest.mark.parametrize("seed", TEST_SEEDS)
@@ -1351,9 +1413,21 @@ def test_status_matches_legs_done_in_every_run(
                 assert r.jpy_leg_done <= r.usd_leg_done  # the JPY leg never goes first
 
 
-@pytest.mark.skip(reason="Rates are metrics; they are implemented on Day 9 (src/metrics.py)")
-def test_success_partial_and_failure_rates_sum_to_one() -> None:
-    pass
+@pytest.mark.parametrize("model", ALL_MODELS)
+@pytest.mark.parametrize("seed", TEST_SEEDS)
+@pytest.mark.parametrize(("n_banks", "arrival"), STRESS_CASES)
+def test_success_partial_and_failure_rates_sum_to_one(
+    model: Model, seed: int, n_banks: int, arrival: str
+) -> None:
+    for ample in (True, False):
+        for probability in PROBABILITIES:
+            data, params = case_inputs(seed, n_banks, arrival, probability, ample)
+            results, _ = run_model(data, model, params)
+            assert len(results) > 0  # N > 0, so the rates are numbers, not NaN
+            rates = settlement_rates(results)
+            assert math.isclose(sum(rates.values()), 1.0)
+            counts = count_states(results)
+            assert counts["n_settled"] + counts["n_partial"] + counts["n_failed"] == len(results)
 
 
 @pytest.mark.parametrize("model", ALL_MODELS)
