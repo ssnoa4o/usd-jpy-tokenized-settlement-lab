@@ -2,7 +2,7 @@
 
 Open-source research and simulation framework for tokenized USD/JPY foreign exchange settlement.
 
-> **Status: early draft (Day 9 of a 21-day plan).** The synthetic transaction generator, the bank ledger and the three settlement models (A: Sequential, B: Prefunded Tokenized, C: Atomic PvP) work, and each model is checked against an independent plain-Python reference implementation in the tests. The first metrics (settlement rates, failure-reason counts, Principal Exposure) are implemented. Experiments and the dashboard are planned and not yet implemented. No experiments have been run, and this repository reports no results yet.
+> **Status: early draft (Day 10 of a 21-day plan).** The synthetic transaction generator, the bank ledger and the three settlement models (A: Sequential, B: Prefunded Tokenized, C: Atomic PvP) work, and each model is checked against an independent plain-Python reference implementation in the tests. The metrics (settlement rates, failure-reason counts, Principal Exposure, Gross Prefunding, Peak Liquidity Proxy, Liquidity Utilization, Average Settlement Time) are implemented. Experiments and the dashboard are planned and not yet implemented. No experiments have been run, and this repository reports no results yet.
 
 ## Project overview
 
@@ -80,7 +80,7 @@ The data uses a fixed USD/JPY rate of 150.00. This is an illustrative simplifica
 |---|---|
 | Synthetic transaction generator (`src/transactions.py`) | Implemented (Day 1, extended Day 5) |
 | Settlement simulator (`src/simulator.py`) | Models A (Day 6), B and C (Day 7) implemented |
-| Metrics (`src/metrics.py`) | Rates, failure-reason counts and Principal Exposure implemented (Day 9); liquidity and time metrics planned (Day 10) |
+| Metrics (`src/metrics.py`) | Rates, failure-reason counts and Principal Exposure (Day 9); liquidity and time metrics (Day 10) |
 | Experiments | Planned |
 | Streamlit dashboard | Planned |
 | Research report, policy brief, presentation | Planned |
