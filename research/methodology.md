@@ -1,6 +1,6 @@
 # Methodology (draft)
 
-Status: Day 11 draft, 2026-11-10 (grid revised to lower JPY only; calibration attempt 2 not yet run). The transaction generator, Models A, B and C, and every metric in sec. 5 except L\* (computed from the Exp3 runs) exist. No main experiment has been run. This file is the single place for definitions, so code, tests, report and slides use the same words. If code and this file disagree, fix one and record the change.
+Status: Day 11 draft, 2026-11-10 (grid revised to lower JPY only; calibration attempt 2 met its conditions). The transaction generator, Models A, B and C, and every metric in sec. 5 except L\* (computed from the Exp3 runs) exist. No main experiment has been run. This file is the single place for definitions, so code, tests, report and slides use the same words. If code and this file disagree, fix one and record the change.
 
 This is an independent research prototype on synthetic data. No institution (BIS, BoJ, CLS, OSFI or any other) has reviewed, approved or endorsed it.
 
@@ -52,7 +52,7 @@ Ranges follow HANDOFF 5.1.
 | FX Rate | 150.00 | 150.00 | Sensitivity optional |
 | Transaction Size | USD 100,000 to 1,000,000, uniform | same | Continuous uniform; not real FX size distribution |
 | Number of Banks | 2 to 10 | 2 | Per transaction, an ordered pair of two different banks (USD payer, JPY payer) is drawn uniformly at random |
-| Initial Liquidity (per bank, per currency) | placeholder reference USD 100,000,000 and JPY 15,000,000,000; placeholder multipliers 100%, 75%, 50%, 25%, 10% | 100% | Replaced by the calibration in sec. 6. From Day 11 the grid lowers JPY only (JPY = reference JPY x multiplier; USD stays at the reference). Attempt 1 (both currencies scaled) did not meet its grid condition; attempt 2 not yet run; values not fixed (see `findings.md`) |
+| Initial Liquidity (per bank, per currency) | placeholder reference USD 100,000,000 and JPY 15,000,000,000; placeholder multipliers 100%, 75%, 50%, 25%, 10% | 100% | Replaced by the calibration in sec. 6. From Day 11 the grid lowers JPY only (JPY = reference JPY x multiplier; USD stays at the reference). Attempt 1 (both currencies scaled) did not meet its grid condition. Attempt 2 fixed the grid at JPY multipliers 1, 0.09375, 0.0625, 0.03125, 0.0125 and the H4b level at 0.09375 (`results/calibration.csv`, `findings.md` sec. 2) |
 | Settlement Delay (gap between legs / processing time) | 0, 60, 300 seconds | 60 | Simulation time |
 | Transaction Arrival | sequential (one transaction every 10 s), burst (10 transactions at the same time, every 100 s) | sequential | Same average arrival rate. The 10 s spacing makes transactions overlap at 60 s and 300 s delay |
 | Failure Probability (second-leg / technical) | 0%, 1%, 5% | 1% | Sec. 7 |
@@ -86,7 +86,7 @@ N = number of transactions in a run. n_settled, n_partial, n_failed count the st
 | 1 Baseline | none (3 models; plus 0% failure sanity run) | 500 transactions, 2 banks, ample liquidity, delay 60 s, failure 1% |
 | 2 Volume Stress | One factor at a time, others at baseline: Volume {100, 500, 1000}; Banks {2, 5, 10}; Arrival {sequential, burst}. Used with Exp3's liquidity grid for H3 | ample liquidity (H3: grid), delay 60 s, failure 1% |
 | 3 Liquidity Stress | Liquidity multiplier grid. Combined with each Exp2 factor level (one at a time) to get L\* for H3 | 500 transactions, 2 banks, delay 60 s, failure 1% |
-| 4 Delay / Failure Stress | One at a time: Failure {0, 1, 5}% at delay 60 s; Delay {0, 60, 300} s at failure 1%. H4b cells: delay {0, 60, 300} s at failure 1% and a grid level where shortages occur (placeholder 50%) | 500 transactions, 2 banks, ample liquidity (except H4b cells) |
+| 4 Delay / Failure Stress | One at a time: Failure {0, 1, 5}% at delay 60 s; Delay {0, 60, 300} s at failure 1%. H4b cells: delay {0, 60, 300} s at failure 1% and the H4b level from the calibration (JPY multiplier 0.09375, attempt 2; USD at the reference) | 500 transactions, 2 banks, ample liquidity (except H4b cells) |
 
 The 0% failure run is a sensitivity check (no `partial`, no failure expected at ample liquidity). `timeout` is not triggered (sec. 3), so it cannot produce states in this run.
 

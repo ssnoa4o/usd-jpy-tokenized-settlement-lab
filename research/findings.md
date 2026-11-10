@@ -37,6 +37,14 @@ An earlier diagnostic points the same way: `scripts/diagnose_two_bank_mirror.py`
 
 **Consequence (threat to validity; methodology sec. 9).** Exp3 "liquidity stress" now means JPY liquidity stress, with USD at the reference. A first-leg USD shortage is not expected in Exp3. This changes what L\* (H3) and the success-rate change (H4a) measure: they describe sensitivity to JPY liquidity only, not to both currencies.
 
-### Attempt 2: not yet run
+### Attempt 2 (run on Day 11)
 
-No attempt-2 result exists. Results will be added here only from the attempt-2 output files in `results/`, with the file name and condition cited.
+Run once on 2026-11-10 (UTC 05:29:22), code at commit `3927553`, seeds 101 to 110, failure probability 0%, models A, B and C, grid scaling JPY only. Sources: `results/calibration.csv`, `results/calibration_checks.csv`, `results/experiment_log.csv` (attempt-2 row). Recorded only; not interpreted.
+
+| Step | Rule (sec. 6) | Outcome |
+|---|---|---|
+| Ample reference | As in attempt 1 | Met at the placeholder reference (USD 100,000,000 and JPY 15,000,000,000 per bank), 0 doublings; 0 `insufficient_funds` in all 240 ample count rows |
+| Grid | As in attempt 1, JPY only | **Met** after 3 halvings. Final lower JPY multipliers 0.09375, 0.0625, 0.03125, 0.0125 (USD at the reference). Qualifying lower levels (a Model A `partial` / `insufficient_funds` in all 10 seeds): 0.03125 and 0.0125 |
+| H4b level | Highest level with such a `partial` in at least half of the seeds at each of delays 0, 60, 300 s | 0.09375 (H4b testable) |
+
+Fixed for the main runs: ample reference USD 100,000,000 / JPY 15,000,000,000 per bank; Exp3 grid = JPY multipliers 1, 0.09375, 0.0625, 0.03125, 0.0125 (USD at the reference); H4b cells at JPY multiplier 0.09375. Which Exp3 levels are "active" for H1b is decided from the main runs (30 seeds), as `hypotheses.md` states, not from the calibration.

@@ -1,0 +1,2 @@
+attempt,grid_scaling,status,failed_condition,reference_usd,reference_jpy,doublings_used,ample_reached,lower_multipliers,halvings_used,grid_condition_met,qualifying_lower_levels,h4b_multiplier,h4b_testable,seeds,failure_probability,git_commit,run_utc
+2,jpy_only,ok,,100000000,15000000000,0,True,0.09375 0.0625 0.03125 0.0125,3,True,0.03125 0.0125,0.09375,True,101-110,0.0,3927553c487938aba48d6a506891cc30d49375b3,2026-11-10T05:29:22Z
