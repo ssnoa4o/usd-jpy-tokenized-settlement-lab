@@ -1,0 +1,28 @@
+hypothesis,level,role,verdict,n_seeds,n_pos,n_neg,n_zero,mean_diff,note,model,value_mean,value_min,value_max,git_commit,seeds
+H1a,failure_0,descriptive,,30,,,,,mean and range of principal_exposure_usd,sequential,0.0,0.0,0.0,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H1a,failure_0,descriptive,,30,,,,,mean and range of principal_exposure_usd,prefunded,0.0,0.0,0.0,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H1a,failure_0.01,descriptive,,30,,,,,mean and range of principal_exposure_usd,sequential,2596140.800666667,605798.14,5168553.1,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H1a,failure_0.01,descriptive,,30,,,,,mean and range of principal_exposure_usd,prefunded,2596140.800666667,605798.14,5168553.1,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H1a,failure_0.05,descriptive,,30,,,,,mean and range of principal_exposure_usd,sequential,13604295.671666669,8685342.11,18597496.91,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H1a,failure_0.05,descriptive,,30,,,,,mean and range of principal_exposure_usd,prefunded,13604295.671666669,8685342.11,18597496.91,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H1a,overall,overall,,,,,,,"descriptive only, no verdict",,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H1b,jpy_0.09375,descriptive,,30,26,0,4,7093531.3623,not informative: A partial with insufficient_funds in only 26/30 seeds; not counted,,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H1b,jpy_0.0625,decides,supported,30,30,0,0,13068133.901,active: A partial with insufficient_funds in 30/30 seeds; diff = A minus B,,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H1b,jpy_0.03125,decides,supported,30,30,0,0,28761399.823,active: A partial with insufficient_funds in 30/30 seeds; diff = A minus B,,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H1b,jpy_0.0125,decides,supported,30,30,0,0,75019582.6613,active: A partial with insufficient_funds in 30/30 seeds; diff = A minus B,,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H1b,overall,overall,supported,,,,,,3 active level(s) of 4,,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H2,gap_delay_0,descriptive,,30,1,0,29,3086.3667,B minus A peak_liquidity_proxy_usd (mean_diff = mean gap),,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H2,gap_delay_60,descriptive,,30,30,0,0,2141185.1933,B minus A peak_liquidity_proxy_usd (mean_diff = mean gap),,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H2,gap_delay_300,descriptive,,30,30,0,0,13796006.6737,B minus A peak_liquidity_proxy_usd (mean_diff = mean gap),,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H2,gap300_minus_gap0,decides,supported,30,30,0,0,13792920.307,"ample, failure 1%",,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H2,overall,overall,supported,30,30,0,0,13792920.307,single comparison,,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H4a,jpy_0.09375,direction_check,,30,0,0,30,0.0,mean exactly 0: not a reversal,,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H4a,jpy_0.0625,direction_check,,30,0,0,30,0.0,mean exactly 0: not a reversal,,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H4a,jpy_0.03125,direction_check,,30,0,0,30,0.0,mean exactly 0: not a reversal,,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H4a,jpy_0.0125,decides,not supported,30,0,0,30,0.0,highest stress alone (change_A minus change_C of success_rate); verdict is in the overall row,,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H4a,overall,overall,not supported,30,0,0,30,0.0,no difference at the highest stress in every seed,,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H4b,h4b_cells,active_check,,,,,,,"A rows with partial insufficient_funds in the H4b cells: 78 of 90 (any delay, any seed needed)",,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H4b,delay_300,decides,inconclusive,30,8,1,21,217165.3537,highest stress alone (change_A minus change_B of principal_exposure_usd); verdict is in the overall row,,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H4b,delay_60,direction_check,,30,1,2,27,-10988.612,mean has the opposite sign of the highest stress: reversal,,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+H4b,overall,overall,inconclusive,30,8,1,21,217165.3537,mixed signs (or no seeds) at the highest stress,,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30
+input_check,seeds,active_check,,,,,,,seeds are exactly 1-30,,,,,5c3d59b3533790b5376d210c9f74d2468f3dddae,1-30

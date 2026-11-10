@@ -1,6 +1,6 @@
 # Findings (draft)
 
-Status: Day 11, 2026-11-10. **The Exp1 baseline was run on Day 11 (descriptive only; sec. 3). No hypothesis verdict has been recorded yet.** Exp2 to Exp4 have not been run. This file records outcomes in the order they happen. Hypotheses are recorded as supported / not supported / inconclusive only after the main runs, under the rules fixed in `hypotheses.md`.
+Status: Day 12, 2026-11-10. **The Exp1 baseline was run on Day 11 (descriptive only; sec. 3). The Exp3 and Exp4 main runs were done on Day 12 and the verdicts for H1b, H2, H4a and H4b computed by pre-committed code are recorded in sec. 4. H3 is not computed yet (it needs Exp2 combined with Exp3).** Exp2 has not been run. This file records outcomes in the order they happen. Hypotheses are recorded as supported / not supported / inconclusive only after the main runs, under the rules fixed in `hypotheses.md`.
 
 This is an independent research prototype on synthetic data. No institution (BIS, BoJ, CLS, OSFI or any other) has reviewed, approved or endorsed it.
 
@@ -112,3 +112,188 @@ These notes separate what the table reports from how it may be read. Exp1 has no
 ### 3.4 Protocol note
 
 Before the committed run, during development on 2026-11-10, a timing dry run of the runner used the main seeds 1 to 30 in a temporary directory. The code was uncommitted and the outputs were deleted. Its values were not used or recorded, but the first few lines of its `baseline_results.csv` were printed and seen during the format check (a `head` of the file, condition `baseline`). The runner was then changed after review (self-checks, `n_valid`, dirty-tree refusal); the committed run used commit `743f1ba`. Exp1 has no decision rule, so this cannot change any verdict. From now on, dry runs use test seeds only.
+
+## 4. Exp3 and Exp4 stress runs (Day 12)
+
+### 4.1 Run record
+
+Main run of Exp3 (liquidity stress, JPY only) and Exp4 (failure, delay and H4b cells) on 2026-11-10 (`run_utc` 2026-11-10T23:29:23Z to 23:29:34Z in `results/stress_run_metrics.csv`), from the clean commit `5c3d59b` (runner `stress` in `src/experiments.py`; verdict code `src/verdicts.py`). Seeds 1 to 30, 500 transactions, 2 banks, sequential arrival, cut-off W = 3,600 s. 13 cells x 3 models x 30 seeds = 1,170 runs. Reference balances USD 100,000,000 and JPY 15,000,000,000 per bank (calibration attempt 2, sec. 2); in the JPY-stressed cells only JPY is lowered (JPY = 15,000,000,000 x multiplier; USD stays at the reference). Every run in a cell flagged ample had `n_insufficient_funds` = 0 (max 0 in every such row of `results/stress_test_results.csv`), so there was no ample violation and no verdict was withheld under methodology sec. 6.
+
+Sources: `results/stress_run_metrics.csv` (one row per run; includes `ample_cell`, `jpy_multiplier`, `git_commit`, `run_utc`), `results/stress_test_results.csv` (per cell, model and metric: `mean`, `min`, `max` over 30 seeds, `n_valid`), `results/verdicts.csv`, `results/summary.csv` (rebuilt: Exp1 plus the stress experiments) and `results/experiment_log.csv` (1,170 rows added).
+
+| Experiment | Cell (`condition`) | Failure probability | Delay (s) | JPY multiplier | Ample flag |
+|---|---|---|---|---|---|
+| exp3_liquidity | jpy_1 | 1% | 60 | 1 | yes |
+| exp3_liquidity | jpy_0.09375 | 1% | 60 | 0.09375 | no |
+| exp3_liquidity | jpy_0.0625 | 1% | 60 | 0.0625 | no |
+| exp3_liquidity | jpy_0.03125 | 1% | 60 | 0.03125 | no |
+| exp3_liquidity | jpy_0.0125 | 1% | 60 | 0.0125 | no |
+| exp4_failure | failure_0 | 0% | 60 | 1 | yes |
+| exp4_failure | failure_0.01 | 1% | 60 | 1 | yes |
+| exp4_failure | failure_0.05 | 5% | 60 | 1 | yes |
+| exp4_delay | delay_0 | 1% | 0 | 1 | yes |
+| exp4_delay | delay_300 | 1% | 300 | 1 | yes |
+| exp4_h4b | h4b_delay_0 | 1% | 0 | 0.09375 | no |
+| exp4_h4b | h4b_delay_60 | 1% | 60 | 0.09375 | no |
+| exp4_h4b | h4b_delay_300 | 1% | 300 | 0.09375 | no |
+
+The ample (60 s, 1%) cell of Exp4 delay is the `exp4_failure` cell `failure_0.01`; it was run once and is not run again as `delay_60`. In `stress_test_results.csv`, the cells `exp3_liquidity` / `jpy_1`, `exp4_failure` / `failure_0.01` and the Exp1 `baseline` condition (sec. 3.1) have identical parameters (1% failure, delay 60 s, reference balances). Their numbers match: in `stress_test_results.csv` the two stress cells are identical in every metric and model (for example Success Rate 0.9905 [0.98, 0.996]; Principal Exposure of A and B 2,596,000 [605,800, 5,169,000]), they equal each other in every numeric column, and per seed they equal the Exp1 baseline in `results/run_metrics.csv` exactly (Success Rate, Principal Exposure, Peak Liquidity Proxy and Gross Prefunding; checked for all 30 seeds and all three models). The sec. 3.1 values are therefore the same (Peak Liquidity Proxy 4.007e7, 4.221e7 and 4.013e7 for A, B and C). Likewise `h4b_delay_60` has the same parameters as `exp3_liquidity` / `jpy_0.09375` and shows the same numbers.
+
+### 4.2 Results by cell
+
+Every cell is "mean [min, max]" over 30 seeds, taken from `results/stress_test_results.csv`. Rounding: rates to 4 significant figures; USD amounts to 4 significant figures, shown in whole USD with thousands separators; exact values such as 0 and 1 are shown as they are. Models: A Sequential, B Prefunded, C Atomic PvP. Rows for `jpy_1`, `failure_0.01` and `h4b_delay_60` repeat numbers from other rows as explained in sec. 4.1. Peak Liquidity Proxy is a proxy (methodology sec. 5), not Peak Liquidity.
+
+**Success Rate** (counts `settled` only; `partial` is not included)
+
+| Cell | A Sequential | B Prefunded | C Atomic PvP |
+|---|---|---|---|
+| jpy_1 | 0.9905 [0.98, 0.996] | 0.9905 [0.98, 0.996] | 0.9905 [0.98, 0.996] |
+| jpy_0.09375 | 0.9698 [0.9, 0.992] | 0.9654 [0.9, 0.992] | 0.9698 [0.9, 0.992] |
+| jpy_0.0625 | 0.952 [0.896, 0.986] | 0.9438 [0.896, 0.988] | 0.952 [0.896, 0.986] |
+| jpy_0.03125 | 0.9067 [0.866, 0.954] | 0.8583 [0.822, 0.892] | 0.9067 [0.866, 0.954] |
+| jpy_0.0125 | 0.7727 [0.732, 0.816] | 0.5278 [0.504, 0.578] | 0.7727 [0.732, 0.816] |
+| failure_0 | 1 [1, 1] | 1 [1, 1] | 1 [1, 1] |
+| failure_0.01 | 0.9905 [0.98, 0.996] | 0.9905 [0.98, 0.996] | 0.9905 [0.98, 0.996] |
+| failure_0.05 | 0.9515 [0.936, 0.97] | 0.9515 [0.936, 0.97] | 0.9515 [0.936, 0.97] |
+| delay_0 | 0.9905 [0.98, 0.996] | 0.9905 [0.98, 0.996] | 0.9905 [0.98, 0.996] |
+| delay_300 | 0.9905 [0.98, 0.996] | 0.9905 [0.98, 0.996] | 0.9905 [0.98, 0.996] |
+| h4b_delay_0 | 0.9698 [0.9, 0.992] | 0.9698 [0.9, 0.992] | 0.9698 [0.9, 0.992] |
+| h4b_delay_60 | 0.9698 [0.9, 0.992] | 0.9654 [0.9, 0.992] | 0.9698 [0.9, 0.992] |
+| h4b_delay_300 | 0.9698 [0.9, 0.992] | 0.8883 [0.858, 0.922] | 0.9698 [0.9, 0.992] |
+
+**Partial Rate**
+
+| Cell | A Sequential | B Prefunded | C Atomic PvP |
+|---|---|---|---|
+| jpy_1 | 0.009533 [0.004, 0.02] | 0.009533 [0.004, 0.02] | 0 [0, 0] |
+| jpy_0.09375 | 0.0302 [0.008, 0.1] | 0.009333 [0.004, 0.02] | 0 [0, 0] |
+| jpy_0.0625 | 0.048 [0.014, 0.104] | 0.009133 [0.002, 0.02] | 0 [0, 0] |
+| jpy_0.03125 | 0.09327 [0.046, 0.134] | 0.0084 [0.002, 0.016] | 0 [0, 0] |
+| jpy_0.0125 | 0.2273 [0.184, 0.268] | 0.005333 [0, 0.014] | 0 [0, 0] |
+| failure_0 | 0 [0, 0] | 0 [0, 0] | 0 [0, 0] |
+| failure_0.01 | 0.009533 [0.004, 0.02] | 0.009533 [0.004, 0.02] | 0 [0, 0] |
+| failure_0.05 | 0.04853 [0.03, 0.064] | 0.04853 [0.03, 0.064] | 0 [0, 0] |
+| delay_0 | 0.009533 [0.004, 0.02] | 0.009533 [0.004, 0.02] | 0 [0, 0] |
+| delay_300 | 0.009533 [0.004, 0.02] | 0.009533 [0.004, 0.02] | 0 [0, 0] |
+| h4b_delay_0 | 0.0302 [0.008, 0.1] | 0.009267 [0.002, 0.018] | 0 [0, 0] |
+| h4b_delay_60 | 0.0302 [0.008, 0.1] | 0.009333 [0.004, 0.02] | 0 [0, 0] |
+| h4b_delay_300 | 0.0302 [0.008, 0.1] | 0.008733 [0.002, 0.018] | 0 [0, 0] |
+
+**Failure Rate** (`failed` only: neither leg completed)
+
+| Cell | A Sequential | B Prefunded | C Atomic PvP |
+|---|---|---|---|
+| jpy_1 | 0 [0, 0] | 0 [0, 0] | 0.009533 [0.004, 0.02] |
+| jpy_0.09375 | 0 [0, 0] | 0.02527 [0, 0.088] | 0.0302 [0.008, 0.1] |
+| jpy_0.0625 | 0 [0, 0] | 0.04707 [0.004, 0.1] | 0.048 [0.014, 0.104] |
+| jpy_0.03125 | 0 [0, 0] | 0.1333 [0.1, 0.176] | 0.09327 [0.046, 0.134] |
+| jpy_0.0125 | 0 [0, 0] | 0.4669 [0.42, 0.494] | 0.2273 [0.184, 0.268] |
+| failure_0 | 0 [0, 0] | 0 [0, 0] | 0 [0, 0] |
+| failure_0.01 | 0 [0, 0] | 0 [0, 0] | 0.009533 [0.004, 0.02] |
+| failure_0.05 | 0 [0, 0] | 0 [0, 0] | 0.04853 [0.03, 0.064] |
+| delay_0 | 0 [0, 0] | 0 [0, 0] | 0.009533 [0.004, 0.02] |
+| delay_300 | 0 [0, 0] | 0 [0, 0] | 0.009533 [0.004, 0.02] |
+| h4b_delay_0 | 0 [0, 0] | 0.02093 [0, 0.088] | 0.0302 [0.008, 0.1] |
+| h4b_delay_60 | 0 [0, 0] | 0.02527 [0, 0.088] | 0.0302 [0.008, 0.1] |
+| h4b_delay_300 | 0 [0, 0] | 0.103 [0.074, 0.138] | 0.0302 [0.008, 0.1] |
+
+**Principal Exposure, amount-based (USD)**
+
+| Cell | A Sequential | B Prefunded | C Atomic PvP |
+|---|---|---|---|
+| jpy_1 | 2,596,000 [605,800, 5,169,000] | 2,596,000 [605,800, 5,169,000] | 0 [0, 0] |
+| jpy_0.09375 | 9,602,000 [1,782,000, 33,650,000] | 2,508,000 [605,800, 5,169,000] | 0 [0, 0] |
+| jpy_0.0625 | 15,500,000 [4,169,000, 36,760,000] | 2,436,000 [146,200, 5,169,000] | 0 [0, 0] |
+| jpy_0.03125 | 30,990,000 [15,390,000, 42,920,000] | 2,231,000 [146,200, 4,366,000] | 0 [0, 0] |
+| jpy_0.0125 | 76,250,000 [60,730,000, 86,590,000] | 1,230,000 [0, 3,167,000] | 0 [0, 0] |
+| failure_0 | 0 [0, 0] | 0 [0, 0] | 0 [0, 0] |
+| failure_0.01 | 2,596,000 [605,800, 5,169,000] | 2,596,000 [605,800, 5,169,000] | 0 [0, 0] |
+| failure_0.05 | 13,600,000 [8,685,000, 18,600,000] | 13,600,000 [8,685,000, 18,600,000] | 0 [0, 0] |
+| delay_0 | 2,596,000 [605,800, 5,169,000] | 2,596,000 [605,800, 5,169,000] | 0 [0, 0] |
+| delay_300 | 2,596,000 [605,800, 5,169,000] | 2,596,000 [605,800, 5,169,000] | 0 [0, 0] |
+| h4b_delay_0 | 9,602,000 [1,782,000, 33,650,000] | 2,497,000 [202,500, 4,909,000] | 0 [0, 0] |
+| h4b_delay_60 | 9,602,000 [1,782,000, 33,650,000] | 2,508,000 [605,800, 5,169,000] | 0 [0, 0] |
+| h4b_delay_300 | 9,602,000 [1,782,000, 33,650,000] | 2,280,000 [202,500, 4,291,000] | 0 [0, 0] |
+
+**Peak Liquidity Proxy (USD, proxy)**
+
+| Cell | A Sequential | B Prefunded | C Atomic PvP |
+|---|---|---|---|
+| jpy_1 | 40,070,000 [22,440,000, 80,490,000] | 42,210,000 [24,700,000, 81,690,000] | 40,130,000 [22,440,000, 80,410,000] |
+| jpy_0.09375 | 34,840,000 [22,440,000, 50,310,000] | 31,070,000 [20,930,000, 37,640,000] | 29,670,000 [20,060,000, 37,420,000] |
+| jpy_0.0625 | 31,610,000 [21,870,000, 48,120,000] | 23,650,000 [18,510,000, 26,220,000] | 23,210,000 [15,660,000, 24,930,000] |
+| jpy_0.03125 | 26,180,000 [17,350,000, 46,350,000] | 12,910,000 [11,730,000, 14,890,000] | 12,340,000 [11,930,000, 12,480,000] |
+| jpy_0.0125 | 22,490,000 [13,720,000, 42,760,000] | 5,566,000 [4,793,000, 6,915,000] | 4,962,000 [4,910,000, 4,988,000] |
+| failure_0 | 40,010,000 [22,440,000, 80,570,000] | 42,170,000 [24,570,000, 81,770,000] | 40,010,000 [22,440,000, 80,570,000] |
+| failure_0.01 | 40,070,000 [22,440,000, 80,490,000] | 42,210,000 [24,700,000, 81,690,000] | 40,130,000 [22,440,000, 80,410,000] |
+| failure_0.05 | 39,690,000 [22,700,000, 78,050,000] | 42,020,000 [24,850,000, 79,250,000] | 39,370,000 [22,950,000, 75,540,000] |
+| delay_0 | 40,070,000 [22,440,000, 80,490,000] | 40,070,000 [22,440,000, 80,490,000] | 40,130,000 [22,440,000, 80,410,000] |
+| delay_300 | 40,070,000 [22,440,000, 80,490,000] | 53,870,000 [35,990,000, 91,080,000] | 40,130,000 [22,440,000, 80,410,000] |
+| h4b_delay_0 | 34,840,000 [22,440,000, 50,310,000] | 29,760,000 [20,110,000, 37,460,000] | 29,670,000 [20,060,000, 37,420,000] |
+| h4b_delay_60 | 34,840,000 [22,440,000, 50,310,000] | 31,070,000 [20,930,000, 37,640,000] | 29,670,000 [20,060,000, 37,420,000] |
+| h4b_delay_300 | 34,840,000 [22,440,000, 50,310,000] | 28,810,000 [26,660,000, 31,870,000] | 29,670,000 [20,060,000, 37,420,000] |
+
+At `delay_0` the B mean (40,073,707 USD) differs from the A mean (40,070,621 USD) only after the fourth significant figure (unrounded means from `stress_run_metrics.csv`, rounded to whole dollars), so the two rounded cells look equal. The per-cell values of the other metrics (counts by reason, Gross Prefunding, Liquidity Utilization, duration-weighted exposure, Average Settlement Time) are in `results/stress_test_results.csv`.
+
+### 4.3 Verdicts
+
+Copied from `results/verdicts.csv`. Every row has `git_commit` 5c3d59b3533790b5376d210c9f74d2468f3dddae and `seeds` 1-30. "diff" columns follow the note of each row (for H1b: A minus B of amount-based Principal Exposure; for H2 gap rows: B minus A of Peak Liquidity Proxy; for H4a: change_A minus change_C of Success Rate; for H4b: change_A minus change_B of amount-based Principal Exposure). `n_pos`, `n_neg` and `n_zero` count seeds (out of `n_seeds`) with a positive, negative or exactly zero paired difference. Blank cells are blank in the file.
+
+| Hypothesis | Level | Role | Verdict | n_seeds | n_pos / n_neg / n_zero | mean_diff | Note |
+|---|---|---|---|---|---|---|---|
+| H1b | jpy_0.09375 | descriptive | (none) | 30 | 26 / 0 / 4 | 7093531.3623 | not informative: A partial with insufficient_funds in only 26/30 seeds; not counted |
+| H1b | jpy_0.0625 | decides | supported | 30 | 30 / 0 / 0 | 13068133.901 | active: A partial with insufficient_funds in 30/30 seeds; diff = A minus B |
+| H1b | jpy_0.03125 | decides | supported | 30 | 30 / 0 / 0 | 28761399.823 | active: A partial with insufficient_funds in 30/30 seeds; diff = A minus B |
+| H1b | jpy_0.0125 | decides | supported | 30 | 30 / 0 / 0 | 75019582.6613 | active: A partial with insufficient_funds in 30/30 seeds; diff = A minus B |
+| H1b | overall | overall | supported | | | | 3 active level(s) of 4 |
+| H2 | gap_delay_0 | descriptive | (none) | 30 | 1 / 0 / 29 | 3086.3667 | B minus A peak_liquidity_proxy_usd (mean_diff = mean gap) |
+| H2 | gap_delay_60 | descriptive | (none) | 30 | 30 / 0 / 0 | 2141185.1933 | B minus A peak_liquidity_proxy_usd (mean_diff = mean gap) |
+| H2 | gap_delay_300 | descriptive | (none) | 30 | 30 / 0 / 0 | 13796006.6737 | B minus A peak_liquidity_proxy_usd (mean_diff = mean gap) |
+| H2 | gap300_minus_gap0 | decides | supported | 30 | 30 / 0 / 0 | 13792920.307 | ample, failure 1% |
+| H2 | overall | overall | supported | 30 | 30 / 0 / 0 | 13792920.307 | single comparison |
+| H4a | jpy_0.09375 | direction_check | (none) | 30 | 0 / 0 / 30 | 0.0 | mean exactly 0: not a reversal |
+| H4a | jpy_0.0625 | direction_check | (none) | 30 | 0 / 0 / 30 | 0.0 | mean exactly 0: not a reversal |
+| H4a | jpy_0.03125 | direction_check | (none) | 30 | 0 / 0 / 30 | 0.0 | mean exactly 0: not a reversal |
+| H4a | jpy_0.0125 | decides | not supported | 30 | 0 / 0 / 30 | 0.0 | highest stress alone (change_A minus change_C of success_rate); verdict is in the overall row |
+| H4a | overall | overall | not supported | 30 | 0 / 0 / 30 | 0.0 | no difference at the highest stress in every seed |
+| H4b | h4b_cells | active_check | (none) | | | | A rows with partial insufficient_funds in the H4b cells: 78 of 90 (any delay, any seed needed) |
+| H4b | delay_300 | decides | inconclusive | 30 | 8 / 1 / 21 | 217165.3537 | highest stress alone (change_A minus change_B of principal_exposure_usd); verdict is in the overall row |
+| H4b | delay_60 | direction_check | (none) | 30 | 1 / 2 / 27 | -10988.612 | mean has the opposite sign of the highest stress: reversal |
+| H4b | overall | overall | inconclusive | 30 | 8 / 1 / 21 | 217165.3537 | mixed signs (or no seeds) at the highest stress |
+| input_check | seeds | active_check | (none) | | | | seeds are exactly 1-30 |
+
+H1a is descriptive (no verdict; `role` = descriptive, overall "descriptive only, no verdict"). Its values, from the `value_mean`, `value_min` and `value_max` columns of `verdicts.csv` (mean principal exposure in USD over 30 seeds, whole USD):
+
+| Level | Model | value_mean [value_min, value_max] |
+|---|---|---|
+| failure_0 | A Sequential | 0 [0, 0] |
+| failure_0 | B Prefunded | 0 [0, 0] |
+| failure_0.01 | A Sequential | 2,596,141 [605,798, 5,168,553] |
+| failure_0.01 | B Prefunded | 2,596,141 [605,798, 5,168,553] |
+| failure_0.05 | A Sequential | 13,604,296 [8,685,342, 18,597,497] |
+| failure_0.05 | B Prefunded | 13,604,296 [8,685,342, 18,597,497] |
+
+The verdicts were computed by code that was written, reviewed and committed before the main run (commit `5c3d59b`; the `git_commit` and `seeds` columns of `verdicts.csv` record this). The decision rules in `hypotheses.md` were not changed.
+
+### 4.4 Reading notes
+
+These notes separate what the tables report from how it may be read. "Result" sentences restate the files; "reading" sentences are interpretation and are tentative.
+
+**H1b.** Result: at the three active levels (JPY multipliers 0.0625, 0.03125 and 0.0125) B had lower amount-based Principal Exposure than A in all 30 seeds, with mean differences (A minus B) of 13,068,133.901, 28,761,399.823 and 75,019,582.6613 USD; the code records "supported". The level 0.09375 was not active (A had a `partial` with `insufficient_funds` in 26 of 30 seeds, not all 30), so it is not counted, although its paired differences (26 positive, 4 zero) are shown. Reading: `hypotheses.md` already states that the direction is largely design-driven, because B reserves both legs at arrival and so cannot have a second-leg `insufficient_funds` `partial`. The verdict is therefore not independent evidence about B. What the run adds is the size of the gap under this grid (Principal Exposure of A against B in the Exposure table above), which measures how much this one mechanism matters in the simplified model. The code's "Not supported" reading for H1b (B not lower than A in every seed at every active level) was not triggered.
+
+**H2.** Result: the B minus A gap in Peak Liquidity Proxy at 300 s minus the gap at 0 s was positive in all 30 seeds (mean 13,792,920.307 USD); the code records "supported". The mean gaps were 3,086.3667 USD at 0 s (positive in 1 seed, zero in 29), 2,141,185.1933 USD at 60 s and 13,796,006.6737 USD at 300 s. Reading: `hypotheses.md` says the direction can be anticipated from the reservation rule (B holds the JPY leg from arrival, A pays it after the delay), so the size of the gap over the delay is the main information. The proxy is partly definitional (reserved funds count as unavailable) and ignores netting and credit.
+
+**H4a.** Result: Success Rate of A equals that of C in all 150 (level, seed) pairs of `exp3_liquidity` (checked directly on per-run `success_rate` in `stress_run_metrics.csv`); the same holds in all 13 cells of Exp3 and Exp4 (390 pairs). `verdicts.csv` accordingly records the paired difference of the change (A minus C) as exactly 0 in 30 of 30 seeds at each level (`n_zero` = 30). The code records "not supported" under rule (1) of `hypotheses.md`, no difference at the highest stress. Proposed reading, not verified: with USD at the reference, both A and C fail to settle exactly when the JPY leg is short at the second leg (A) or at commit time (C), so the equality may follow from the model rules rather than be an empirical finding. This was not checked transaction by transaction. This result applies to JPY-only stress (methodology sec. 9) and says nothing about a USD shortage or a shortage in both currencies. Success Rate is equal; the models still differ in how the shortfall is recorded and in Principal Exposure (A leaves `partial`, C leaves `failed`).
+
+**H4b.** Result: the code records "inconclusive". The active check passed (78 of 90 A rows in the H4b cells had a `partial` with `insufficient_funds`). At 300 s (the highest stress) the paired difference (change_A minus change_B of amount-based Principal Exposure) was positive in 8 seeds, negative in 1 and zero in 21 (mean 217,165.3537 USD); at 60 s it was positive in 1, negative in 2 and zero in 27 (mean -10,988.612 USD), which the code labels a reversal of direction. Mixed signs at the highest stress decide the verdict. Reading: `methodology.md` sec. 9 already anticipated that H4b might show little or no difference, because amount-based exposure ignores delay and delay can act only through balances. The result is consistent with that expectation. Duration-weighted exposure is reported in `stress_test_results.csv` as a descriptive value (W = 3,600 s) and was not used for the verdict.
+
+**Exploratory and descriptive only (no verdict depends on it).** In the Success Rate table, B's mean falls faster than A's and C's at low JPY levels (0.5278 for B against 0.7727 for A and C at multiplier 0.0125) and at 300 s in the H4b cells (0.8883 for B against 0.9698). In B the shortfall appears mainly as `failed` (reservation not possible), not as `partial`. Proposed reading, not tested: B reserves the JPY leg at arrival, so JPY for in-flight transactions is unavailable to later arrivals, and a longer delay holds it longer. In the Exp3 low-JPY cells (multipliers 0.09375 to 0.0125) B's Peak Liquidity Proxy is also below A's and above C's (see the Peak Liquidity Proxy table), and its Gross Prefunding is below C's (for example 2.411e8 against 4.024e8 USD at multiplier 0.0125, from `stress_test_results.csv`), which may reflect fewer transactions passing reservation; this was not checked. This is a descriptive pattern in simplified models, not a test.
+
+**Other checks and limits of this section.**
+- H3 is not computed. It needs Exp2 combined with the Exp3 grid (planned for Day 13).
+- Several outcomes in the tables follow from the model rules and are correctness checks, not evidence: Model C has Partial Rate 0 and Principal Exposure 0 in every cell; A and B have identical Principal Exposure at ample liquidity; Average Settlement Time equals the delay in every model.
+- Under JPY-only stress the second leg is JPY in every model, so the shortages seen here are second-leg shortages (and, in B, reservation failures). The results do not describe a stress on USD or on both currencies.
+- The models are simplified, the data are synthetic, and 2 banks, one arrival pattern, one seed set and a coarse grid are used. The decision rules are not statistical tests (methodology sec. 9).
+- Smart-contract-style completion in the simulation is not legal settlement finality. Atomic PvP, as modelled in C, removes the one-leg-only state (principal risk in this model) but does not remove liquidity risk: C still fails when funds are short, as its Failure Rate shows (0.2273 at multiplier 0.0125).
+- Peak Liquidity Proxy is a proxy; Gross Prefunding is not Peak Liquidity.
+- No policy suggestion is drawn from these results alone. Any policy reading is deferred to `policy/policy_brief.md`, after all experiments, and must keep the limits above.

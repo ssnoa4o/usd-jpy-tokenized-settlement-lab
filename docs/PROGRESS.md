@@ -242,3 +242,42 @@
   - Exp3 の「流動性ストレス」は JPY だけ（methodology sec. 9）。
   - H1b の active な水準は本番（30 シード）で決まる。較正の結果ではない。
 - 次の日（Day 12）: `src/experiments.py` に Exp3（JPY 格子 1, 0.09375, 0.0625, 0.03125, 0.0125）と Exp4（失敗率・遅延、H4b のセルは 0.09375）を足し、`stress_test_results.csv` を作る。試し実行はテスト用シードで行う。
+
+## Day 12 — Exp3（流動性ストレス）・Exp4（遅延・障害ストレス）と H1b / H2 / H4a / H4b の判定
+- 決定（ユーザー、計画時）: 判定コードを本番の前に作り、commit してから本番を実行する。H3 は Exp2 × Exp3 が必要なので Day 13。
+- 完了（コード、commit `5c3d59b`）:
+  - `src/experiments.py` に `stress` を追加（`python -m src.experiments stress`）。13 セル × 3 モデル × 30 シード = 1,170 回。
+    - 内訳: Exp3 は JPY 倍率 1, 0.09375, 0.0625, 0.03125, 0.0125。Exp4 は失敗率 0 / 1 / 5%、遅延 0 / 300 s、H4b セルは遅延 0 / 60 / 300 s で JPY 0.09375。
+    - 格子と H4b 水準は `calibration.csv` から読む。シードごとに取引データを 1 回だけ作り、全セル・全モデルで共有。
+    - ample のセルだけ資金不足を ample 違反として扱う（`ample_cell` 列）。Exp1 の動作と出力は変えていない。
+  - `src/verdicts.py`（新規）: hypotheses.md のルールをそのままコード化。
+    - 平均が 0 かどうかは整数（1e-4 単位）で判定する。
+    - ample 違反があれば全判定を保留する（methodology sec. 6）。
+    - `git_commit` と `seeds` の列、シードが 1〜30 でないときの警告、`-dirty` の警告がある。
+  - テスト: `tests/test_experiments.py` 31 件追加、`tests/test_verdicts.py` 新規。
+- 検査: `reviewer` 2 回。
+  - 1 回目: 高 1 件。浮動小数の残りで「平均ちょうど 0 は逆転ではない」が崩れる。
+  - 1 回目: 中 2 件。テストが改変を検知しない、ample 違反が判定に反映されない。
+  - 1 回目: 低。provenance がない。
+  - 2 回目: 中 1 件。H1b と H4b で保留の扱いが一致しない → 全仮説を保留に統一。
+  - 低 2 件（必要な列がないときにエラーにする、dirty の警告）も修正。すべて本番前に修正した。
+  - わざと壊す確認は 20 種類中 19 種類を検知。残る 1 種類（`paired_verdict` の `mean_sign != 0`）は結果を変えない改変だと確認した。
+- 実行（2026-11-10 23:29 UTC、commit `5c3d59b`）: 1,170 回。ample 違反なし、自己チェックはすべて通過。
+  - 出力: `stress_run_metrics.csv`、`stress_test_results.csv`、`verdicts.csv`、`summary.csv`（Exp1 + stress で作り直し）。
+  - `experiment_log.csv` に 1,170 行を追記した。
+  - 2 回目の実行は上書き防止で止まることを確認した。
+- 判定（`verdicts.csv` のとおり）: H1b supported（active な水準は 4 水準中 3。0.09375 は 26/30 シードのみで数えない）、H2 supported、H4a not supported、H4b inconclusive。H1a は記述のみ。
+  - H1b と H2 の向きは、設計からある程度予想できる（hypotheses.md に記載済み）。
+  - H4a: A と C の成功率は、13 セルの 390 組すべてで一致した（Claude と `integrity-checker` が直接確認）。仕組みの説明は確かめていない読み方として書いた。JPY だけのストレスに限る。
+- 確認: `jpy_1`・`failure_0.01` は Exp1 baseline とシードごとに完全一致した。
+- 完了（文書）: `findings.md` sec. 4（`writer`）、methodology（Status、sec. 11）、hypotheses（Status のみ）、README。
+- 検査（文書）: `integrity-checker` 1 回。数値の不一致 0 件、高 0 件。
+  - 中 3 件（実行時刻の範囲、A = C・Exp1 一致の書き方が確認済みの事実より弱い、README の古い記述）と低 3 件をすべて修正した。
+  - 修正後の再検査はしていない。
+- pytest: 1260 passed / 0 skipped。`scripts/precommit_check.sh` は問題なし。
+- 未完了 / 既知の制限:
+  - H3 は未計算（Exp2 × Exp3 が必要）。
+  - Exp3 は JPY だけのストレスなので、USD 不足や両通貨の不足には当てはまらない。
+  - `experiment_log.csv` は `--force` でも追記する（変更なし）。
+  - B の成功率が低い JPY と 300 s で下がる点は探索的な記述のみ。判定には使っていない。
+- 次の日（Day 13）: Exp2（件数 100/500/1000、銀行 2/5/10、到着 sequential/burst）× Exp3 の格子で L* を出し、H3 を判定する。判定コードは今日と同じく本番の前に commit する。`sensitivity_results.csv` を作る。複数シードのばらつきを確認する。
