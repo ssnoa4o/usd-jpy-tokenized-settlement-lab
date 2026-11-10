@@ -224,3 +224,21 @@
 - pytest: 1128 passed / 0 skipped。`scripts/precommit_check.sh` は問題なし。
 - 未完了 / 決めること（本番の前）: H1b / H4b を検証不能とするか、格子の作り方を変えて較正をやり直すか（findings.md sec. 2）。ユーザーは「原因を確かめてから Day 11 の最初に決める」を選んだ。やり直す場合は、まず理由を記録する。`--force` は今回の `calibration*.csv` を上書きするので、その前に今回の 2 ファイルを別名（例：`results/calibration_attempt1*.csv`）で残す。今回の失敗の記録は消さない。
 - 次の日（Day 11）: 上の決定 → （必要なら）較正のやり直し → baseline 実験（Exp1）。
+
+## Day 11 — 較正のやり直し（JPY のみ）と Exp1 Baseline
+- 決定（ユーザー、計画時、本番前）: Day 10 の較正（attempt 1）の失敗は格子の作り方が原因と考え、格子と H4b の段階で **JPY だけ** を下げる形にして較正をやり直す（ample の段階は両通貨のまま）。attempt 2 も失敗したら 3 回目はせず、H1b / H4b を Inconclusive（検証不能）とし、Exp3 の格子は 100/75/50/25/10%（JPY のみ）にする、と先に決めた。`hypotheses.md` の判定ルールは変えていない。
+- 完了（原因の確認）: `tests/test_calibration.py` にテスト 2 件（シード 201〜205）。2 行・両通貨同率・失敗率 0% では Model A の 2 本目の不足は観察されず、JPY だけを下げると起こる。`reviewer` の指摘で、これは証明ではなく観察と書き直した（取引どうしが時間的に重なるため、厳密な不変量ではない）。
+- 完了（記録）: Day 10 の出力を `results/calibration_attempt1.csv`・`calibration_checks_attempt1.csv` に改名して保存。findings / methodology（sec. 4, 6, 9, 11）/ hypotheses（Status と sec. 2 の注記のみ）/ README を更新。commit `3927553`。
+- 完了（較正 attempt 2、2026-11-10 05:29 UTC、commit `3927553`）: ample は基準（USD 1 億 / JPY 150 億）で倍増 0 回。格子は半減 3 回で条件を満たした。JPY 倍率 1, 0.09375, 0.0625, 0.03125, 0.0125（全シードで 2 本目の不足が出た水準は 0.03125 と 0.0125）。H4b 水準 0.09375。`results/calibration.csv`、`experiment_log.csv` に記録。commit `44db3b0`。
+- 完了（`src/experiments.py`、commit `743f1ba`）: Exp1 Baseline の実行コード。A / B / C × `baseline`（失敗 1%）と `sanity_0pct`（失敗 0%）× シード 1〜30 = 180 回。出力は `run_metrics.csv`、`baseline_results.csv`、`summary.csv`、`experiment_log.csv`（追記のみ）。設計上の保証の自己チェック、ample 違反は止めずに記録、commit していないときは実行しない（`--allow-dirty` で解除）。`tests/test_experiments.py` 37 件。
+- 検査: `reviewer` 2 回（較正の変更・実行コード）。高 0 件。中 4 件（原因の説明の断定、0% 条件で ample 違反が握りつぶされる、`n_valid` がない、dirty でも実行できる）と低 4 件を修正。わざと壊す確認はすべてテストが検知した。
+- 実行（2026-11-10、commit `743f1ba`）: `python -m src.experiments baseline`。180 回、ample 違反なし、自己チェックはすべて通過。
+- 完了（文書）: `findings.md` sec. 3 に Exp1 の比較表（記述のみ。判定はしない）。`integrity-checker` 1 回。数値の不一致 0 件、高 0 件。中 3 件（methodology / hypotheses の「本番未実施」、attempt 2 のファイル名、README の「実験は未実装」）と低い指摘（因果の断定、PvP についての一般論、ドライランの注記）を修正。再検査（2 回目）で高 0 件・中 1 件（W が時間加重 exposure の大部分を占めるという表現がデータと合わない）・低 2 件。表現を弱めて修正した（数値は足していない）。この最後の修正のあとの再検査はしていない。
+- 記録（手順の逸脱）: commit 前の時間計測のための試し実行で、`sim-engineer` が**本番のシード 1〜30** を一時フォルダで使った（Claude の指示による）。出力は削除し、値は使っていないが、`baseline_results.csv` の先頭数行は目に入った。Exp1 には判定ルールがないので判定は変わらない。findings sec. 3.4 と methodology sec. 11 に記録した。今後の試し実行はテスト用シードのみ。
+- 修正: `tests/test_experiments.py` が最初は本番シード 1〜3 を使っていたので 201〜204 に変更。既存のテスト（`test_metrics.py`・`test_simulator.py` の `SimulationParams(seed=1)` の手書きデータ、`test_transactions.py` の生成の再現性テスト）は本番の条件と違うデータなので変えていない。
+- pytest: 1173 passed。`scripts/precommit_check.sh` は問題なし。
+- 未完了 / 既知の制限:
+  - `experiment_log.csv` は `--force` でも追記するので、本番を 2 回実行すると行が重複する。
+  - Exp3 の「流動性ストレス」は JPY だけ（methodology sec. 9）。
+  - H1b の active な水準は本番（30 シード）で決まる。較正の結果ではない。
+- 次の日（Day 12）: `src/experiments.py` に Exp3（JPY 格子 1, 0.09375, 0.0625, 0.03125, 0.0125）と Exp4（失敗率・遅延、H4b のセルは 0.09375）を足し、`stress_test_results.csv` を作る。試し実行はテスト用シードで行う。
