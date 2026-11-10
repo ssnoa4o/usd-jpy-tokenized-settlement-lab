@@ -438,3 +438,393 @@ def test_same_seeds_give_identical_run_metrics(tmp_path):
     one = pd.read_csv(first / "run_metrics.csv").drop(columns=ignore)
     two = pd.read_csv(second / "run_metrics.csv").drop(columns=ignore)
     pd.testing.assert_frame_equal(one, two)
+
+
+# ====================================================================== stress (Day 12)
+# Exp3 + Exp4. Test seeds 201+ only; every output goes to tmp_path.
+
+STRESS_COUNT = 100
+JPY_REF = 15_000_000_000
+
+
+def write_stress_calibration(path: Path, lower: str = "0.5 0.25", h4b: float = 0.5, testable: bool = True,
+                             jpy: int = JPY_REF, usd: int = 100_000_000) -> Path:
+    """Write a fake calibration.csv with the columns the stress run reads."""
+    pd.DataFrame([{
+        "status": "ok", "ample_reached": True, "reference_usd": usd, "reference_jpy": jpy,
+        "lower_multipliers": lower, "h4b_multiplier": h4b, "h4b_testable": testable,
+    }]).to_csv(path, index=False)
+    return path
+
+
+def run_stress(tmp_path: Path, lower: str = "0.5 0.25", with_baseline: bool = True, seeds=SEEDS,
+               jpy: int = JPY_REF, **kwargs):
+    """Run Exp1 (small) for summary.csv, then the stress run (small) in tmp_path."""
+    write_stress_calibration(tmp_path / "calibration.csv", lower=lower, jpy=jpy)
+    if with_baseline:
+        experiments.main(results_dir=tmp_path, seeds=seeds, count=COUNT)
+    return experiments.main_stress(results_dir=tmp_path, seeds=seeds, count=STRESS_COUNT, **kwargs)
+
+
+def fake_levels(lower=(0.5, 0.25), h4b=0.5) -> experiments.StressLevels:
+    return experiments.StressLevels(tuple(lower), h4b, "" if h4b is not None else "not testable")
+
+
+@pytest.fixture(scope="module")
+def stress_runs() -> pd.DataFrame:
+    """Small stress run table (2 test seeds), shared by the self-check tests."""
+    with pytest.MonkeyPatch.context() as patch:  # module scope: the function-scope fixture is not usable
+        patch.setattr(experiments, "git_version", lambda: "abc123")
+        return experiments.run_stress_all(
+            100_000_000, JPY_REF, experiments.stress_conditions(fake_levels()), seeds=SEEDS, count=STRESS_COUNT)
+
+
+def test_stress_cells_read_from_real_calibration_file():
+    levels = experiments.read_stress_levels(experiments.RESULTS_DIR / "calibration.csv")
+    # These assert what the file holds today (attempt 2); the code itself never hard-codes them.
+    assert levels.lower_multipliers == (0.09375, 0.0625, 0.03125, 0.0125)
+    assert levels.h4b_multiplier == 0.09375
+    cells = experiments.stress_conditions(levels)
+    assert len(cells) == 13
+    assert [c.name for c in cells if c.experiment == "exp3_liquidity"] == [
+        "jpy_1", "jpy_0.09375", "jpy_0.0625", "jpy_0.03125", "jpy_0.0125"]
+
+
+def test_stress_cells_follow_a_fake_calibration(tmp_path):
+    path = write_stress_calibration(tmp_path / "c.csv", lower="0.5 0.2", h4b=0.4)
+    levels = experiments.read_stress_levels(path)
+    assert levels.lower_multipliers == (0.5, 0.2) and levels.h4b_multiplier == 0.4
+    cells = experiments.stress_conditions(levels)
+    by_name = {(c.experiment, c.name): c for c in cells}
+    assert ("exp3_liquidity", "jpy_0.2") in by_name
+    assert by_name[("exp4_h4b", "h4b_delay_300")].jpy_multiplier == 0.4
+    assert len(cells) == 3 + 3 + 2 + 3
+
+
+def test_stress_cell_table_is_exact():
+    cells = experiments.stress_conditions(fake_levels())
+    table = {(c.experiment, c.name): (c.failure_probability, c.delay_seconds, c.jpy_multiplier, c.ample)
+             for c in cells}
+    assert table == {
+        ("exp3_liquidity", "jpy_1"): (0.01, 60, 1.0, True),
+        ("exp3_liquidity", "jpy_0.5"): (0.01, 60, 0.5, False),
+        ("exp3_liquidity", "jpy_0.25"): (0.01, 60, 0.25, False),
+        ("exp4_failure", "failure_0"): (0.0, 60, 1.0, True),
+        ("exp4_failure", "failure_0.01"): (0.01, 60, 1.0, True),
+        ("exp4_failure", "failure_0.05"): (0.05, 60, 1.0, True),
+        ("exp4_delay", "delay_0"): (0.01, 0, 1.0, True),
+        ("exp4_delay", "delay_300"): (0.01, 300, 1.0, True),
+        ("exp4_h4b", "h4b_delay_0"): (0.01, 0, 0.5, False),
+        ("exp4_h4b", "h4b_delay_60"): (0.01, 60, 0.5, False),
+        ("exp4_h4b", "h4b_delay_300"): (0.01, 300, 0.5, False),
+    }
+
+
+def test_stress_has_no_duplicate_cell_and_no_second_60s_delay_cell():
+    cells = experiments.stress_conditions(fake_levels())
+    assert len({(c.experiment, c.name) for c in cells}) == len(cells)
+    # delay 60 / failure 1% / multiplier 1 under exp4_* exists once (in exp4_failure).
+    sixty = [c for c in cells if c.experiment.startswith("exp4_") and c.delay_seconds == 60
+             and c.failure_probability == 0.01 and c.jpy_multiplier == 1.0]
+    assert [(c.experiment, c.name) for c in sixty] == [("exp4_failure", "failure_0.01")]
+    assert "exp4_failure" in experiments.SHARED_CELL_NOTE
+
+
+def test_h4b_cells_skipped_when_not_testable(tmp_path, capsys):
+    path = write_stress_calibration(tmp_path / "calibration.csv", testable=False)
+    levels = experiments.read_stress_levels(path)
+    assert levels.h4b_multiplier is None and levels.h4b_skip_reason
+    assert len(experiments.stress_conditions(levels)) == 8
+    experiments.main(results_dir=tmp_path, seeds=[201], count=COUNT)
+    result = experiments.main_stress(results_dir=tmp_path, seeds=[201], count=STRESS_COUNT)
+    assert result["h4b_skipped"] is True
+    assert "H4b cells skipped" in capsys.readouterr().out
+    runs = pd.read_csv(tmp_path / "stress_run_metrics.csv")
+    assert "exp4_h4b" not in set(runs["experiment"])
+
+
+def test_stress_refuses_bad_calibration(tmp_path):
+    pd.DataFrame([{"status": "failed", "ample_reached": True, "reference_usd": 1, "reference_jpy": 1,
+                   "lower_multipliers": "0.5", "h4b_multiplier": 0.5, "h4b_testable": True}]
+                 ).to_csv(tmp_path / "calibration.csv", index=False)
+    with pytest.raises(ValueError, match="status"):
+        experiments.main_stress(results_dir=tmp_path, seeds=[201], count=STRESS_COUNT)
+    path = tmp_path / "old.csv"
+    write_calibration(path)  # no lower_multipliers column
+    with pytest.raises(ValueError, match="lower_multipliers"):
+        experiments.read_stress_levels(path)
+
+
+def test_stress_needs_baseline_results(tmp_path):
+    with pytest.raises(ValueError, match="Run Exp1"):
+        run_stress(tmp_path, with_baseline=False)
+    assert not (tmp_path / "stress_run_metrics.csv").exists()
+
+
+def test_initial_jpy_is_rounded_reference_times_multiplier():
+    assert experiments.initial_jpy_for(15_000_000_000, 0.09375) == 1_406_250_000
+    assert experiments.initial_jpy_for(15_000_000_000, 0.0125) == 187_500_000
+    assert experiments.initial_jpy_for(15_000_000_000, 1.0) == 15_000_000_000
+    assert isinstance(experiments.initial_jpy_for(15_000_000_000, 0.0125), int)
+    assert experiments.initial_jpy_for(101, 0.5) == 50  # rounds to a whole yen
+
+
+def test_stress_run_rows_record_jpy_and_multiplier(tmp_path):
+    result = run_stress(tmp_path)
+    assert result["n_runs"] == 11 * 3 * len(SEEDS) and result["n_cells"] == 11
+    runs = pd.read_csv(tmp_path / "stress_run_metrics.csv")
+    exp1_columns = pd.read_csv(tmp_path / "run_metrics.csv").columns.tolist()
+    expected = exp1_columns[:11] + ["jpy_multiplier", "ample_cell"] + exp1_columns[11:]
+    assert runs.columns.tolist() == expected
+    for _, r in runs.iterrows():
+        assert r["initial_jpy"] == round(JPY_REF * r["jpy_multiplier"])
+        assert r["initial_usd"] == 100_000_000
+    assert set(runs["seed"]) == set(SEEDS)
+    one = runs[(runs["condition"] == "jpy_0.25") & (runs["model"] == "atomic") & (runs["seed"] == 201)].iloc[0]
+    assert one["initial_jpy"] == JPY_REF // 4 and one["delay_seconds"] == 60
+    h4b = runs[(runs["condition"] == "h4b_delay_300") & (runs["seed"] == 201)]
+    assert set(h4b["delay_seconds"]) == {300} and set(h4b["jpy_multiplier"]) == {0.5}
+    log = pd.read_csv(tmp_path / "experiment_log.csv")
+    stress_log = log[log["experiment"].str.startswith(("exp3", "exp4"))]
+    assert len(stress_log) == result["n_runs"]
+    assert all("jpy_multiplier=" in p for p in stress_log["parameters"])
+    exp1_log = log[log["experiment"] == "exp1_baseline"]
+    assert not any("jpy_multiplier" in p for p in exp1_log["parameters"])
+    assert any("jpy_multiplier=0.5" in p for p in stress_log["parameters"])
+
+
+def test_same_data_across_cells_and_models_within_a_seed(monkeypatch):
+    seen: dict[int, set[int]] = {}
+    calls: list[int] = []
+    real_run, real_gen = simulator.run_model, transactions.generate_transactions
+
+    def spy_run(data, model, params):
+        seen.setdefault(params.seed, set()).add(id(data))
+        return real_run(data, model, params)
+
+    def spy_gen(**kwargs):
+        calls.append(kwargs["seed"])
+        return real_gen(**kwargs)
+
+    monkeypatch.setattr(simulator, "run_model", spy_run)
+    monkeypatch.setattr(transactions, "generate_transactions", spy_gen)
+    cells = experiments.stress_conditions(fake_levels())
+    experiments.run_stress_all(100_000_000, JPY_REF, cells, seeds=[203, 204], count=STRESS_COUNT)
+    assert calls == [203, 204]
+    assert all(len(ids) == 1 for ids in seen.values())  # one data set for all cells and models
+    assert set(seen) == {203, 204}
+
+
+def test_non_ample_cells_have_status_ok_and_ample_cells_flag_violations(tmp_path, capsys):
+    # Tiny JPY reference: shortages everywhere. Ample cells -> ample_violated, others -> ok.
+    result = run_stress(tmp_path, jpy=150_000)
+    assert result["ample_violated"] is True
+    assert "WARNING" in capsys.readouterr().out
+    log = pd.read_csv(tmp_path / "experiment_log.csv")
+    log = log[log["experiment"].str.startswith(("exp3", "exp4"))]
+    runs = pd.read_csv(tmp_path / "stress_run_metrics.csv")
+    assert (log["status"].values == ["ample_violated" if (a and n > 0) else "ok"
+                                     for a, n in zip(runs["ample_cell"], runs["n_insufficient_funds"])]).all()
+    h4b = runs[runs["experiment"] == "exp4_h4b"]
+    assert (~h4b["ample_cell"]).all() and (h4b["n_insufficient_funds"] > 0).any()
+    assert set(log[log["experiment"] == "exp4_h4b"]["status"]) == {"ok"}
+    assert "ample_violated" in set(log[log["experiment"] == "exp3_liquidity"]["status"])
+
+
+def test_ample_reference_gives_all_ok_and_ample_flag_in_csv(tmp_path):
+    result = run_stress(tmp_path)
+    assert result["ample_violated"] is False
+    runs = pd.read_csv(tmp_path / "stress_run_metrics.csv")
+    flags = runs.groupby("condition")["ample_cell"].first().to_dict()
+    assert flags["jpy_1"] and flags["failure_0.05"] and flags["delay_300"]
+    assert not flags["jpy_0.5"] and not flags["jpy_0.25"] and not flags["h4b_delay_0"]
+
+
+def test_stress_overwrite_protection(tmp_path):
+    run_stress(tmp_path)
+    with pytest.raises(FileExistsError, match="stress_run_metrics.csv"):
+        run_stress(tmp_path, with_baseline=False)
+    assert run_stress(tmp_path, with_baseline=False, force=True)["n_runs"] == 66
+
+
+def test_stress_overwrite_protection_results_file_only(tmp_path):
+    (tmp_path / "stress_test_results.csv").write_text("x\n")
+    with pytest.raises(FileExistsError, match="stress_test_results.csv"):
+        run_stress(tmp_path)
+
+
+def test_stress_dirty_tree_refused_and_allowed(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(experiments, "git_version", lambda: "abc123-dirty")
+    write_stress_calibration(tmp_path / "calibration.csv")
+    experiments.main(results_dir=tmp_path, seeds=[201], count=COUNT, allow_dirty=True)
+    with pytest.raises(experiments.DirtyTreeError, match="uncommitted"):
+        experiments.main_stress(results_dir=tmp_path, seeds=[201], count=STRESS_COUNT)
+    assert not (tmp_path / "stress_run_metrics.csv").exists()
+    experiments.main_stress(results_dir=tmp_path, seeds=[201], count=STRESS_COUNT, allow_dirty=True)
+    assert "uncommitted" in capsys.readouterr().out
+    assert set(pd.read_csv(tmp_path / "stress_run_metrics.csv")["git_commit"]) == {"abc123-dirty"}
+
+
+def test_stress_cli_exit_codes(monkeypatch, capsys):
+    monkeypatch.setattr(experiments, "main_stress", lambda **kw: (_ for _ in ()).throw(FileExistsError("x")))
+    assert experiments.cli(["stress"]) == 1
+    seen = {}
+    monkeypatch.setattr(experiments, "main_stress", lambda **kw: seen.update(kw) or {})
+    assert experiments.cli(["stress", "--force", "--allow-dirty"]) == 0
+    assert seen == {"force": True, "allow_dirty": True}
+
+
+def test_summary_contains_both_experiments_and_exp1_files_unchanged(tmp_path):
+    write_stress_calibration(tmp_path / "calibration.csv")
+    experiments.main(results_dir=tmp_path, seeds=SEEDS, count=COUNT)
+    before = {n: (tmp_path / n).read_bytes() for n in ("run_metrics.csv", "baseline_results.csv")}
+    exp1_summary = pd.read_csv(tmp_path / "summary.csv")
+    experiments.main_stress(results_dir=tmp_path, seeds=SEEDS, count=STRESS_COUNT)
+    for name, content in before.items():
+        assert (tmp_path / name).read_bytes() == content
+    summary = pd.read_csv(tmp_path / "summary.csv")
+    stress = pd.read_csv(tmp_path / "stress_test_results.csv")
+    assert list(summary.columns) == ["experiment", "condition", "model", "metric", "n_seeds", "n_valid",
+                                     "mean", "min", "max"]
+    assert list(stress.columns) == list(summary.columns)
+    assert set(summary["experiment"]) == {"exp1_baseline", "exp3_liquidity", "exp4_failure",
+                                          "exp4_delay", "exp4_h4b"}
+    assert len(summary) == len(exp1_summary) + len(stress)
+    pd.testing.assert_frame_equal(summary.iloc[: len(exp1_summary)], exp1_summary)
+    assert len(stress) == 11 * 3 * len(experiments.SUMMARY_METRICS)
+    assert (stress["n_seeds"] == len(SEEDS)).all()
+
+
+def test_stress_log_appended_after_exp1_rows(tmp_path):
+    run_stress(tmp_path)
+    log = pd.read_csv(tmp_path / "experiment_log.csv")
+    assert len(log) == 12 + 66
+
+
+def test_exp1_rows_still_use_exp1_experiment_name(tmp_path):
+    run_main(tmp_path)
+    assert set(pd.read_csv(tmp_path / "run_metrics.csv")["experiment"]) == {"exp1_baseline"}
+    assert experiments.CONDITIONS[0].experiment == "exp1_baseline"
+    assert experiments.CONDITIONS[0].jpy_multiplier == 1.0 and experiments.CONDITIONS[0].ample is True
+
+
+def test_stress_same_seeds_give_identical_results(tmp_path):
+    first, second = tmp_path / "one", tmp_path / "two"
+    for folder in (first, second):
+        folder.mkdir()
+        run_stress(folder)
+    ignore = ["run_utc", "git_commit"]
+    one = pd.read_csv(first / "stress_run_metrics.csv").drop(columns=ignore)
+    two = pd.read_csv(second / "stress_run_metrics.csv").drop(columns=ignore)
+    pd.testing.assert_frame_equal(one, two)
+
+
+def test_stress_sanity_failure_0_cell_has_no_technical_failure(stress_runs):
+    zero = stress_runs[stress_runs["condition"] == "failure_0"]
+    assert (zero["n_technical_failure"] == 0).all() and (zero["n_partial_technical_failure"] == 0).all()
+    hit5 = stress_runs[(stress_runs["condition"] == "failure_0.05") & (stress_runs["model"] == "sequential")]
+    assert hit5["n_technical_failure"].sum() > 0
+
+
+# ------------------------------------------------------------ stress self-checks (mutation style)
+
+def mutated(runs: pd.DataFrame, condition: str, model: str, seed: int, **changes) -> pd.DataFrame:
+    """Copy of the runs with some columns of one run changed (to feed a bad row to the check)."""
+    out = runs.copy()
+    mask = (out["condition"] == condition) & (out["model"] == model) & (out["seed"] == seed)
+    assert mask.sum() == 1
+    for column, value in changes.items():
+        out.loc[mask, column] = value
+    return out
+
+
+def test_check_stress_passes_on_a_clean_run(stress_runs):
+    experiments.check_stress(stress_runs)
+
+
+def test_check_stress_raises_when_a_and_b_exposure_differ_at_ample(stress_runs):
+    bad = mutated(stress_runs, "delay_300", "prefunded", 201, principal_exposure_usd=1.0)
+    with pytest.raises(RuntimeError, match="A and B exposure differ"):
+        experiments.check_stress(bad)
+
+
+def test_check_stress_skips_a_b_equality_when_a_shortage_exists(stress_runs):
+    bad = mutated(stress_runs, "delay_300", "prefunded", 201, principal_exposure_usd=1.0, n_insufficient_funds=3)
+    experiments.check_stress(bad)  # skipped on purpose: the shortage is reported via the ample status
+
+
+def test_check_stress_raises_when_exposure_falls_with_failure_probability(stress_runs):
+    # Make both models fall from 1% to 5% for seed 201 (A == B kept equal, so only the order check fires).
+    bad = stress_runs
+    for model in ("sequential", "prefunded"):
+        bad = mutated(bad, "failure_0.05", model, 201, principal_exposure_usd=0.0)
+    with pytest.raises(RuntimeError, match="falls"):
+        experiments.check_stress(bad)
+
+
+def test_check_stress_raises_when_mean_at_5_percent_is_not_above_0_percent(stress_runs):
+    bad = stress_runs
+    for seed in SEEDS:
+        for model in ("sequential", "prefunded"):
+            bad = mutated(bad, "failure_0.05", model, seed, principal_exposure_usd=0.0)
+            bad = mutated(bad, "failure_0.01", model, seed, principal_exposure_usd=0.0)
+    with pytest.raises(RuntimeError, match="not above"):
+        experiments.check_stress(bad)
+
+
+def test_check_stress_does_not_require_a_hit_in_every_single_seed(stress_runs):
+    # One seed with no exposure at 5% (no hit in that seed) is fine: the check reads the mean.
+    bad = stress_runs
+    for model in ("sequential", "prefunded"):
+        bad = mutated(bad, "failure_0.05", model, 201, principal_exposure_usd=0.0)
+        bad = mutated(bad, "failure_0.01", model, 201, principal_exposure_usd=0.0)
+    experiments.check_stress(bad)
+
+
+def test_check_stress_skips_order_check_for_seed_with_insufficient_funds(stress_runs):
+    bad = stress_runs
+    for model in ("sequential", "prefunded"):
+        bad = mutated(bad, "failure_0.05", model, 201, principal_exposure_usd=0.0)
+    bad = mutated(bad, "failure_0.05", "sequential", 201, n_insufficient_funds=1)
+    bad = mutated(bad, "failure_0.05", "prefunded", 201, n_insufficient_funds=1)
+    experiments.check_stress(bad)
+
+
+def test_stress_self_check_raises_on_atomic_partial(monkeypatch):
+    real_metrics = experiments.metrics.calculate_metrics
+
+    def bad_metrics(results, data, params, ledger):
+        row = real_metrics(results, data, params, ledger)
+        row["n_partial"] = 1
+        return row
+
+    monkeypatch.setattr(experiments.metrics, "calculate_metrics", bad_metrics)
+    with pytest.raises(RuntimeError, match="atomic"):
+        experiments.run_stress_all(100_000_000, JPY_REF, experiments.stress_conditions(fake_levels()),
+                                   seeds=[201], count=STRESS_COUNT)
+
+
+def test_stress_self_check_raises_on_technical_partial_in_0_percent_cell(monkeypatch):
+    real_metrics = experiments.metrics.calculate_metrics
+
+    def bad_metrics(results, data, params, ledger):
+        row = real_metrics(results, data, params, ledger)
+        if params.failure_probability == 0:
+            row["n_partial_technical_failure"] = 1
+        return row
+
+    monkeypatch.setattr(experiments.metrics, "calculate_metrics", bad_metrics)
+    with pytest.raises(RuntimeError, match="technical-failure partial"):
+        experiments.run_stress_all(100_000_000, JPY_REF, experiments.stress_conditions(fake_levels()),
+                                   seeds=[201], count=STRESS_COUNT)
+
+
+def test_nothing_written_when_stress_self_check_fails(tmp_path, monkeypatch):
+    write_stress_calibration(tmp_path / "calibration.csv")
+    experiments.main(results_dir=tmp_path, seeds=[201], count=COUNT)
+    log_before = (tmp_path / "experiment_log.csv").read_text()
+    monkeypatch.setattr(experiments, "check_stress", lambda runs: (_ for _ in ()).throw(RuntimeError("boom")))
+    with pytest.raises(RuntimeError, match="boom"):
+        experiments.main_stress(results_dir=tmp_path, seeds=[201], count=STRESS_COUNT)
+    assert not (tmp_path / "stress_run_metrics.csv").exists()
+    assert (tmp_path / "experiment_log.csv").read_text() == log_before
