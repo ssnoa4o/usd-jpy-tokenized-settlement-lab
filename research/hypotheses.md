@@ -2,7 +2,7 @@
 
 Hypotheses are things to test, not conclusions. Each result is recorded as supported / not supported / inconclusive.
 
-Status: Day 4 draft, 2026-11-02. No experiment has been run. The decision rules below are fixed before any experiment.
+Status: Day 4 draft, 2026-11-02; Day 11 note added, 2026-11-10 (sec. 2 only). No main experiment has been run. The decision rules below are fixed before any experiment and were not changed on Day 11.
 
 This is an independent research prototype on synthetic data. No institution (BIS, BoJ, CLS, OSFI or any other) has reviewed, approved or endorsed it. Source IDs refer to `sources.md`.
 
@@ -86,3 +86,5 @@ H4 is the exception to the all-levels aggregation: the highest level decides, mi
 ## 2. Not yet decided
 
 The liquidity levels are set by the calibration in M sec. 6 before the main runs. Other open items are listed in M sec. 11.
+
+Note (Day 11, before any main run): from Day 11 the liquidity grid lowers JPY only, with USD at the reference (M sec. 6). "Liquidity stress" in H1b, H3 and H4a, and the grid level used for H4b, therefore refer to JPY liquidity. The decision rules above are unchanged.

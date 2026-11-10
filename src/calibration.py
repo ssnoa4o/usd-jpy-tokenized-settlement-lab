@@ -4,6 +4,14 @@ Only `insufficient_funds` counts are read. No other metric is computed or stored
 Decision functions are pure (they take count tables); the runner generates the data
 and can be replaced by a fake in tests.
 
+Attempt 2 (this code). Attempt 1 scaled USD and JPY together in the grid and H4b stages and
+failed: with 2 banks and failure probability 0, no Model A second-leg shortage occurred
+(explanation and tests in research/findings.md sec. 2; results/calibration_attempt1.csv).
+So now:
+- ample stage: both currencies = REFERENCE x 2^d (unchanged);
+- grid and H4b stages: only JPY is lowered. USD stays at REFERENCE_USD x 2^d,
+  JPY = REFERENCE_JPY x 2^d x multiplier.
+
 Run once with: python -m src.calibration
 """
 
@@ -26,7 +34,9 @@ CALIBRATION_SEEDS = range(101, 111)
 MODELS = (Model.SEQUENTIAL, Model.PREFUNDED, Model.ATOMIC)
 FAILURE_PROBABILITY = 0.0
 REFERENCE_USD = 100_000_000  # placeholder, same as SimulationParams default
-REFERENCE_JPY = 15_000_000_000  # both currencies scale together
+REFERENCE_JPY = 15_000_000_000  # ample stage scales both; grid/H4b scale JPY only
+ATTEMPT = 2  # attempt 1 (both currencies scaled in the grid) failed; see findings.md sec. 2
+GRID_SCALING = "jpy_only"  # grid and H4b stages: USD fixed, JPY x multiplier
 MAX_DOUBLINGS = 5
 LOWER_MULTIPLIERS = (0.75, 0.50, 0.25, 0.10)
 MIN_SHORT_LEVELS = 2
@@ -42,7 +52,8 @@ FUNDS = "n_insufficient_funds"
 PARTIAL_FUNDS = "n_partial_insufficient_funds"
 TABLE_COLUMNS = [
     "stage", "attempt", "condition", "model", "seed", "count", "n_banks", "arrival",
-    "delay_seconds", "doublings", "multiplier", "usd", "jpy", FUNDS, PARTIAL_FUNDS,
+    "delay_seconds", "doublings", "multiplier", "usd", "jpy", "scaled_currency",
+    FUNDS, PARTIAL_FUNDS,
 ]  # fmt: skip
 
 
@@ -108,14 +119,19 @@ def make_table(
     doublings: int,
     multiplier: float,
     attempt: int = 0,
+    jpy_only: bool = False,
 ) -> pd.DataFrame:
     """Run every condition x model x seed at one liquidity level; return the count rows.
 
     `attempt` labels the try: the doubling number (ample stage), the halving number
     (grid stage) or 0 (H4b stage).
+    If `jpy_only` is True, USD stays at REFERENCE_USD x 2^doublings and only JPY is
+    multiplied by `multiplier`. Otherwise both currencies are scaled together.
     """
-    scale = 2**doublings * multiplier
-    usd, jpy = REFERENCE_USD * scale, REFERENCE_JPY * scale
+    base = 2**doublings
+    usd = REFERENCE_USD * base * (1.0 if jpy_only else multiplier)
+    jpy = REFERENCE_JPY * base * multiplier
+    scaled_currency = "jpy" if jpy_only else "both"
     rows = []
     for condition in conditions:
         for model in models:
@@ -126,6 +142,7 @@ def make_table(
                     "seed": seed, "count": condition.count, "n_banks": condition.n_banks,
                     "arrival": condition.arrival, "delay_seconds": condition.delay_seconds,
                     "doublings": doublings, "multiplier": multiplier, "usd": usd, "jpy": jpy,
+                    "scaled_currency": scaled_currency,
                     FUNDS: counts[FUNDS], PARTIAL_FUNDS: counts[PARTIAL_FUNDS],
                 })  # fmt: skip
     return pd.DataFrame(rows, columns=TABLE_COLUMNS)
@@ -262,6 +279,7 @@ def run_calibration(
     used = doublings if ample_reached else MAX_DOUBLINGS
     scale = 2**used
     row: dict[str, object] = {
+        "attempt": ATTEMPT, "grid_scaling": GRID_SCALING,
         "status": "ok" if ample_reached else "failed",
         "failed_condition": "" if ample_reached else
             f"not ample after {MAX_DOUBLINGS} doublings (insufficient_funds still occurs)",
@@ -276,11 +294,11 @@ def run_calibration(
     if not ample_reached:
         return row, pd.concat(tables, ignore_index=True)
 
-    # Step 2: grid. Exp3 settings, Model A only, delay 60. Halve lower levels if needed.
+    # Step 2: grid (JPY only). Exp3 settings, Model A only, delay 60. Halve lower levels if needed.
     def grid_fn(multipliers: tuple[float, ...], attempt: int) -> pd.DataFrame:
         return pd.concat(
             [make_table(run_fn, "grid", [EXP3_CONDITION], [Model.SEQUENTIAL], seeds, used, m,
-                        attempt)
+                        attempt, jpy_only=True)
              for m in multipliers],
             ignore_index=True,
         )  # fmt: skip
@@ -299,12 +317,12 @@ def run_calibration(
         return row, pd.concat(tables, ignore_index=True)
     row["qualifying_lower_levels"] = " ".join(f"{m:g}" for m in levels)
 
-    # Step 3: H4b level over the final grid (reference + lower levels) at each delay.
+    # Step 3: H4b level over the final grid (reference + lower levels) at each delay (JPY only).
     grid = (1.0, *multipliers)
     h4b_tables = [
         make_table(
             run_fn, "h4b", [replace(EXP3_CONDITION, name=f"delay_{d:g}", delay_seconds=d)],
-            [Model.SEQUENTIAL], seeds, used, m,
+            [Model.SEQUENTIAL], seeds, used, m, jpy_only=True,
         )
         for m in grid
         for d in H4B_DELAYS
