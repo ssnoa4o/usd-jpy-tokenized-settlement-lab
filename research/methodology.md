@@ -52,7 +52,7 @@ Ranges follow HANDOFF 5.1.
 | FX Rate | 150.00 | 150.00 | Sensitivity optional |
 | Transaction Size | USD 100,000 to 1,000,000, uniform | same | Continuous uniform; not real FX size distribution |
 | Number of Banks | 2 to 10 | 2 | Per transaction, an ordered pair of two different banks (USD payer, JPY payer) is drawn uniformly at random |
-| Initial Liquidity (per bank, per currency) | placeholder reference USD 100,000,000 and JPY 15,000,000,000; placeholder multipliers 100%, 75%, 50%, 25%, 10% | 100% | Replaced by the calibration in sec. 6 |
+| Initial Liquidity (per bank, per currency) | placeholder reference USD 100,000,000 and JPY 15,000,000,000; placeholder multipliers 100%, 75%, 50%, 25%, 10% | 100% | Replaced by the calibration in sec. 6 (run once on Day 10; grid condition not met, so values are not fixed; see `findings.md`) |
 | Settlement Delay (gap between legs / processing time) | 0, 60, 300 seconds | 60 | Simulation time |
 | Transaction Arrival | sequential (one transaction every 10 s), burst (10 transactions at the same time, every 100 s) | sequential | Same average arrival rate. The 10 s spacing makes transactions overlap at 60 s and 300 s delay |
 | Failure Probability (second-leg / technical) | 0%, 1%, 5% | 1% | Sec. 7 |
@@ -95,7 +95,8 @@ The 0% failure run is a sensitivity check (no `partial`, no failure expected at 
 - The reference starts at the placeholder in sec. 4 and doubles until it is ample, at most 5 times (DV). "Ample" = the reference level at which there is no `insufficient_funds` in any model and calibration seed, in every condition that Exp1, 2 and 4 run at ample liquidity (this includes the largest volume, 10 banks, burst arrival and the 300 s delay).
 - The grid has 5 levels (DV): the reference plus 4 lower levels, starting at multipliers 75%, 50%, 25%, 10%. Under Exp3's fixed settings, at least 2 lower levels (DV) must have a `partial` with reason `insufficient_funds` in Model A in every calibration seed (the condition H1b needs). If not, all 4 lower multipliers are halved and the check is repeated, at most 3 times (DV). The grid is then fixed and not refined. If a limit is reached without meeting its condition, no main run starts: the failed condition is recorded in `results/experiment_log.csv` and `findings.md`, and H1b and H4b are reported as untestable unless the design is revised and recorded before any main run.
 - The H4b level is the highest grid level at which Model A has a `partial` with reason `insufficient_funds` in at least half of the calibration seeds (DV), at each of the delays 0, 60 and 300 s. If no level qualifies, H4b is recorded as untestable before any main run.
-- The chosen values are saved in `results/calibration.csv`.
+- The chosen values are saved in `results/calibration.csv` (if a limit is reached, the file records the failed condition instead). The calibration is logged as one summary row in `results/experiment_log.csv`; the per-run column layout of that file is fixed when the main runs start.
+- Run record (Day 10, 2026-11-09, commit `151fe7a`): ample was reached at the placeholder reference with 0 doublings; the grid condition was not met after 3 halvings (no Model A `partial` with `insufficient_funds` at any level). So no main run has started, and the H4b level was not computed. See `findings.md` sec. 1 and 2.
 - If "ample" does not hold in a main run (for example in B, which reserves both legs first), the design is not silently changed: raise the reference, repeat the calibration and rerun the main runs, before any verdict is computed. The change and its reason are recorded in `results/experiment_log.csv` and `findings.md`.
 
 ## 7. Failure injection and required tests
@@ -172,4 +173,4 @@ Decided on Day 9, before any experiment: the metric functions in `src/metrics.py
 
 Decided on Day 10, before any experiment: the liquidity and time metrics follow the rows in sec. 5. The fx rate for the Peak Liquidity Proxy is taken from the input `fx_rate` column, which must hold one value (`SimulationParams` has no rate). Metrics that do not apply to a model, or that have no data, are NaN, never 0. `calculate_metrics` also takes the run's ledger, because the proxy reads its peak drawdowns; the simulator is unchanged.
 
-Still to do after all three models exist: run the liquidity calibration (sec. 6) under the rules fixed there.
+Open after the Day 10 calibration (decide and record before any main run): whether H1b and H4b are reported as untestable, or how the liquidity grid is revised and the calibration repeated (`findings.md` sec. 2).

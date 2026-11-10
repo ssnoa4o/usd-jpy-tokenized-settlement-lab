@@ -206,3 +206,21 @@
   - 流動性と時間の指標（Gross Prefunding、Peak Liquidity Proxy、Average Settlement Time、Liquidity Utilization）は Day 10。
   - 較正も実験も未実施。`results/` は `figures/` のみ。
 - 次の日（Day 10）: 残りの指標を `src/metrics.py` に足す。最後に流動性の較正（シード 101〜110）を行い、`results/calibration.csv` を作る。
+
+## Day 10 — 流動性・時間の指標と流動性の較正（較正は条件を満たさず）
+- 完了（指標）: `src/metrics.py` に `gross_prefunding_usd`、`liquidity_utilization`、`peak_liquidity_proxy_usd`、`average_settlement_time`、`operational_delay`、`run_fx_rate` を追加。`calculate_metrics` は ledger も受け取る（ピークを読むため）。`simulator.py` は変えていない。
+  - 当てはまらないモデルやデータなしは NaN（A の Prefunding / Utilization、空データなど）。B は settled と partial、C は settled と failed / technical_failure を Prefunding に数える。
+  - fx は入力の `fx_rate` 列から取る。1 つの値で、有限かつ 0 より大きくなければ ValueError。
+- 検査（指標）: `reviewer` 1 回。高 0 件、中 2 件（fx が 0 のとき ZeroDivisionError、空データの NaN をテストで固定していない）と低 1 件（ledger が同じ実行のものかの注記）を修正した。わざと壊す確認は 12 種類すべてテストが検知した。
+- 完了（較正のコード）: `src/calibration.py`、`tests/test_calibration.py`。判定は件数の表を受け取る純粋な関数にした。既存の出力があると止まり、上書きには `--force` が必要。
+- 検査（較正のコード、実行前）: `reviewer` 1 回。高 0 件。中 3 件を修正した。①commit してから実行する ②上書きを防ぐ ③エンジンに渡す設定のテストを足す（件数、銀行数、到着の仕方、遅延、シード、残高のスケール、失敗率 0、partial と failed の取り違え）。低 3 件（結合テスト、奇数シードの閾値、`attempt` 列）も修正した。修正後、③の 13 種類の改変はすべてテストが検知した。
+- commit `151fe7a`（ユーザー承認）。そのあと較正を 1 回実行した（2026-11-09 22:35:19 UTC、シード 101〜110、失敗率 0%）。
+- 結果（記録のみ。解釈ではない）:
+  - ample は placeholder の基準（USD 1 億 / JPY 150 億）、倍増 0 回で成り立った。
+  - 格子の条件は、半減 3 回のあとも満たさなかった。16 水準すべてで、Model A の `partial / insufficient_funds` は 10 シードのどれでも 0 件だった。不足はすべて `failed` で出た。
+  - H4b 水準は計算していない。ルールにより本番は始めない。`results/calibration.csv`、`calibration_checks.csv`、`experiment_log.csv`、`research/findings.md` に記録した。
+- 診断（シード 201〜205。結果ではない）: `scripts/diagnose_two_bank_mirror.py` → `results/diagnostic_two_bank_mirror.csv`。2 行では実行後の「A の JPY の増減 = −150 × USD の増減」が誤差 0 で成り立ち、2 本目の不足は 0 件だった。5 行では倍率 0.1 以下で 2 本目の不足が出た。原因の候補であり、まだ確かめていない。
+- 検査（文書）: `integrity-checker` 1 回。高 1 件（README の「実験は未実施」が、較正を実行した今では正しくない）、中 2 件（診断の数値の出所がない、H4b の扱いが文書の間で不一致）、低 3 件を修正した。`hypotheses.md` は、結果を見たあとに判定のルールを変えないよう、変えていない。修正後の再検査はしていない。
+- pytest: 1128 passed / 0 skipped。`scripts/precommit_check.sh` は問題なし。
+- 未完了 / 決めること（本番の前）: H1b / H4b を検証不能とするか、格子の作り方を変えて較正をやり直すか（findings.md sec. 2）。ユーザーは「原因を確かめてから Day 11 の最初に決める」を選んだ。やり直す場合は、まず理由を記録する。`--force` は今回の `calibration*.csv` を上書きするので、その前に今回の 2 ファイルを別名（例：`results/calibration_attempt1*.csv`）で残す。今回の失敗の記録は消さない。
+- 次の日（Day 11）: 上の決定 → （必要なら）較正のやり直し → baseline 実験（Exp1）。

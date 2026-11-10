@@ -1,0 +1,2 @@
+run_utc,experiment,model,seeds,parameters,git_commit,status,note
+2026-11-09T22:35:19Z,calibration,A|B|C,101-110,see results/calibration.csv and results/calibration_checks.csv,151fe7acc04c70c3ec6d30a64e9f0d4cf28aaa04,failed,"Grid condition not met after 3 halvings (methodology sec. 6): Model A had no partial with insufficient_funds at any level in any seed. Ample was reached with 0 doublings. No main run has started."

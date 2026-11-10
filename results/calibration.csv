@@ -1,0 +1,2 @@
+status,failed_condition,reference_usd,reference_jpy,doublings_used,ample_reached,lower_multipliers,halvings_used,grid_condition_met,qualifying_lower_levels,h4b_multiplier,h4b_testable,seeds,failure_probability,git_commit,run_utc
+failed,fewer than 2 lower levels with a funds-partial in every seed after 3 halvings,100000000,15000000000,0,True,0.09375 0.0625 0.03125 0.0125,3,False,,,,101-110,0.0,151fe7acc04c70c3ec6d30a64e9f0d4cf28aaa04,2026-11-09T22:35:19Z
