@@ -273,7 +273,8 @@
 - 完了（文書）: `findings.md` sec. 4（`writer`）、methodology（Status、sec. 11）、hypotheses（Status のみ）、README。
 - 検査（文書）: `integrity-checker` 1 回。数値の不一致 0 件、高 0 件。
   - 中 3 件（実行時刻の範囲、A = C・Exp1 一致の書き方が確認済みの事実より弱い、README の古い記述）と低 3 件をすべて修正した。
-  - 修正後の再検査はしていない。
+  - 修正後に `integrity-checker` で再検査を 1 回実施（commit `3708fe4` の時点）。高・中 0 件、数値の不一致・過大主張 0 件。低 1 件（この行が古い）を修正。
+  - 注記: B の Peak Liquidity Proxy が A と C の間にあるのは平均値の話。シード単位では B ≥ C が 0.09375 で 23/30、0.0625 で 18/30。
 - pytest: 1260 passed / 0 skipped。`scripts/precommit_check.sh` は問題なし。
 - 未完了 / 既知の制限:
   - H3 は未計算（Exp2 × Exp3 が必要）。
