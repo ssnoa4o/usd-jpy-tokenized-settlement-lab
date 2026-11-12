@@ -333,3 +333,42 @@
   - `integrity-checker` の最終検査（push 前、公開される差分すべて）: 数値の不一致 0 件、高・中 0 件。低 3 件（この記録の古い 1 文、README の FX rate が固定であることの注記、`plotly.min.js` と `--force` の説明）を修正した。この最後の 3 件の修正のあとの再検査はしていない。
   - そのあと `origin/main` に push した。
 - 次の日（Day 15）: Streamlit ダッシュボード（`dashboard/app.py`）。実際のエンジンを呼び、`src/figures.py` の図の関数を再利用する。その前に `/gate 2` で Week 2 のゲートを確認する。
+
+## Week 2 ゲート（Day 14 終了時、2026-11-12）
+- 実施: `reviewer`（コード・テスト）と `integrity-checker`（文書・数値・図の注記）。HEAD `1614aec`、作業ツリー clean の状態で検査した。コード・研究文書は変えていない。新しい実験・判定・図の生成はしていない（`experiment_log.csv` は 4,053 行のまま）。
+- pytest 1362 passed / 0 skipped / 0 failed。`scripts/precommit_check.sh` 問題なし。
+- `reviewer` はリポジトリの外のコピーでわざと壊す確認を行い（Model C が片側だけ先に動かす、partial を成功に数える、B が予約を解放しない、ゼロ除算で 0 を返す、C が片側しか検証しない、検証の前に 1 レッグ目を適用する）、どれもテストが失敗した。報告の中で件数が「5 種」と「M1〜M6」で食い違っている。
+- `integrity-checker` は数値を約 790 個照合し、不一致 0 件。Day 14 の最後の修正（commit `1614aec`、再検査していなかった分）も今回確認して問題なし。
+
+| 項目 | 判定 | 根拠 |
+|---|---|---|
+| 最低 4 種類の実験が実行されている | PASS | `experiment_log.csv` に exp1_baseline 180、exp3_liquidity 450、exp4_failure 270、exp4_delay 180、exp4_h4b 270、exp2_x_exp3 2,700、calibration 2 行。全行 status=ok、シードと commit の記録あり、dirty な実行なし |
+| 3 方式の比較表が実測結果から作られている | PASS | `baseline_results.csv`・`stress_test_results.csv`・`sensitivity_results.csv` はコードが書く。`reviewer` が run 単位の CSV から平均を再計算して不一致 0 件。`summary.csv` とも一致 |
+| 最低 4 種類のグラフ | PASS | `results/figures/` に f1〜f7（HTML と PNG）。`figures_manifest.csv` の `figure_code_commit` `e4b322b` は実在し、それ以降 `src/` に差分なし |
+| 結果の解釈とモデルの限界が記録されている | PASS | `research/findings.md` sec. 6 Interpretation（仮説ごとに Observed / Consistent reading / Cannot be concluded）、sec. 7 Model limitations（13 項目、HANDOFF 14 の項目を含む） |
+| 架空の例示数値を実験結果に混ぜない | PASS | `policy/`・`presentation/`・`dashboard/` は `.gitkeep` のみ。README と `research/` の結果の数値はすべて CSV と一致 |
+| HANDOFF 13 Technical | PASS | 3 モデルが動く。残高更新・部分決済・失敗・Model C の不可分性のテストがあり、わざと壊す確認で検知した |
+| HANDOFF 13 Research | PASS | シードごとに取引データを 1 回作って 3 モデルで共有。判定は `verdicts.csv`（H1b supported、H2 supported、H4a not supported、H4b inconclusive、H1a は記述のみ）と `h3_verdicts.csv`（supported 0 / not supported 2 / inconclusive 7）。判定コードの commit は各実行の数秒前（git の時刻と `run_utc` で確認） |
+| HANDOFF 13 Analytics | PASS | 指標は methodology sec. 5 に定義があり、コードと一致。CSV と図はコマンドで自動生成 |
+| HANDOFF 13 Integrity | PASS | 仮想データ、仮定、限界、出典、非公式の独立プロトタイプであることが README・findings・methodology・hypotheses・research_question に記載あり。公的機関の承認と読める表現なし |
+| HANDOFF 13 Presentation / Dashboard / Open Source | 対象外 | Week 3 の作業。未着手で正しい |
+
+- 指摘: 高 0 件。FAIL 0 件。
+- 指摘（中 1 件、`reviewer`）: A と C の Success Rate は Exp3 の 150 組すべてで同じ（Exp3・Exp4 の 13 セル 390 組でも同じ）。モデルの規則から来ている可能性がある。`findings.md` には注記があるが、`verdicts.csv` の H4a と `h3_verdicts.csv` の arrival（A・C）は「not supported」とだけ書かれ、CSV の中にはその注記がない。Day 15 のダッシュボードやスライドが CSV だけを読んで表示すると、実験で確かめた不支持に見える。
+- 指摘（低、コード）:
+  - Day 13 の本番実行で baseline の照合（`cross_check_baseline`）が通ったことは、この PROGRESS（Day 13）に書いてあるが、実行時は画面に出るだけで、CSV やログのファイルには残らない。`reviewer` は中としたが、記録が PROGRESS にあり、今回 `reviewer` が CSV から照合し直して 450 行一致だったので、低に下げた（Claude の判断）。
+  - Model C の `gross_prefunding_usd` は 0 でなく、baseline では B と同じ値。methodology には「検証を通った額」と定義があるが、f1 の項目名 "Gross prefunding" だけを見ると、C も事前に資金を確保しているように読める。
+  - Exp1 の CSV は古い commit `743f1ba` のコードで作ったまま。HEAD のコードで作り直して同じになるかは確かめていない（Exp3 の `jpy_1` と 90 行・3 指標が一致することは確認）。
+  - 平均決済時間は 3 モデルで同じ値（遅延の設定値）なので、モデルの比較にはならない。findings は正しさの確認として扱っている。
+  - `verdicts.csv` に判定コードの commit と生成時刻の列がない（`git_commit` は入力データのもの）。
+  - 銀行数を増やすと全体の流動性も増える（findings に記載済み）。H3 banks を読むときの注意。
+- 指摘（低、文書）:
+  - `findings.md` 299 行目（H1b）の "which measures how much this one mechanism matters" がやや断定的。
+  - `findings.md` の Summary 表は H1b・H2 を「supported」とだけ書く。「向きは設計から予想できる」という限定は表の直後にある。表をスライドや Policy Brief に写すときは限定も一緒に写す。
+  - README の「Hypotheses under test」（will examine など）、「main entry point today」、「Any finding will…」が古い未来形。
+  - f1・f6 の図の中に「C の exposure = 0 は設計上の結果」の注記がない。f7 は誤差バーが平均の差より大きく見える。スライドで説明が必要。
+- 確認していないこと: HEAD のコードで実験を再実行して同じ CSV になるか。f6・f7 以外の PNG と HTML の見た目。`literature_review.md` の外部の数値（CLS、BIS Agorá）と原典の一致（今回は開いていない）。
+- 翌日（Day 15）の最初にやること:
+  1. ダッシュボードの計画に「判定を表示するときは、設計由来かもしれないという注記を一緒に出す」を入れる（中 1 件への対応。`verdicts.csv` に列を足すか、表示側で注記するかはユーザーと決める）。
+  2. `findings.md` 299 行目の言い回しを直す（`writer`、1 文）。
+  3. そのほかの低は Week 3 の README 全面更新とスライド作成のときに対応する。
