@@ -540,3 +540,235 @@ def test_dirty_git_commit_gives_warning_and_note_but_no_refusal(capsys):
     assert overall_of(table, "H1b")["verdict"] == SUPPORTED
     clean = verdicts.build_verdicts(full_runs("abc123"))
     assert "dirty" not in clean[clean["hypothesis"] == "input_check"]["note"].iloc[0]
+
+
+# ====================================================================== H3 (Day 13)
+# L*, range rule and h3_rows on hand-made tables; seeds 201+ only.
+
+GRID = [0.25, 0.5, 1.0]  # small grid: rank 0 = 0.25, 1 = 0.5, 2 = 1, 3 = not reached
+
+
+def test_lstar_exact_95_percent_boundary():
+    assert verdicts.lstar({1.0: (95, 100)}) == (0, "1")  # 95/100 qualifies
+    assert verdicts.lstar({1.0: (94, 100)}) == (1, "not_reached")  # 94/100 does not
+
+
+def test_lstar_all_levels_qualify_gives_lowest_level():
+    levels = {1.0: (100, 100), 0.5: (97, 100), 0.25: (95, 100)}
+    assert verdicts.lstar(levels) == (0, "0.25")
+
+
+def test_lstar_non_monotone_is_above_the_failing_level():
+    # 0.25 qualifies, but 0.5 fails, so L* is the top level 1 (not 0.25).
+    levels = {1.0: (100, 100), 0.5: (50, 100), 0.25: (100, 100)}
+    assert verdicts.lstar(levels) == (2, "1")
+
+
+def test_lstar_top_level_fails_is_not_reached():
+    levels = {1.0: (90, 100), 0.5: (100, 100), 0.25: (100, 100)}
+    assert verdicts.lstar(levels) == (3, "not_reached")
+
+
+def test_lstar_text_uses_the_multiplier():
+    assert verdicts.lstar({1.0: (100, 100), 0.0625: (100, 100)})[1] == "0.0625"
+
+
+def rv(low: list[int], high: list[int]) -> tuple[str, str]:
+    """range_verdict on a 5-level grid: lowest rank 0, not reached rank 5."""
+    seeds = range(201, 201 + len(low))
+    return verdicts.range_verdict(dict(zip(seeds, low)), dict(zip(seeds, high)), 0, 5)
+
+
+def test_range_censored_at_lowest_level_is_inconclusive():
+    assert rv([2, 0, 2], [3, 3, 3]) == (INCONCLUSIVE, "censored")
+    assert rv([2, 2, 2], [3, 0, 3]) == (INCONCLUSIVE, "censored")
+
+
+def test_range_censored_not_reached_is_inconclusive():
+    assert rv([2, 2, 2], [4, 5, 4]) == (INCONCLUSIVE, "censored")
+
+
+def test_range_censored_beats_otherwise_supported_and_identical():
+    assert rv([1, 1, 1], [0, 3, 3])[0] == INCONCLUSIVE  # disjoint, but one seed censored
+    assert rv([5, 5, 5], [5, 5, 5])[0] == INCONCLUSIVE  # identical, but censored: never not supported
+
+
+def test_range_touching_is_inconclusive():
+    assert rv([1, 2, 1], [2, 3, 3])[0] == INCONCLUSIVE  # [1,2] and [2,3] touch
+
+
+def test_range_disjoint_is_supported_in_both_directions():
+    assert rv([1, 1, 2], [3, 4, 3])[0] == SUPPORTED
+    assert rv([3, 4, 3], [1, 1, 2])[0] == SUPPORTED
+
+
+def test_range_identical_per_seed_is_not_supported():
+    assert rv([1, 2, 3], [1, 2, 3])[0] == NOT_SUPPORTED
+
+
+def test_range_same_multiset_but_different_per_seed_is_inconclusive():
+    assert rv([1, 2, 3], [3, 2, 1])[0] == INCONCLUSIVE
+
+
+def test_range_mismatched_seed_sets_raise():
+    with pytest.raises(ValueError, match="same seeds"):
+        verdicts.range_verdict({201: 1, 202: 2}, {201: 1, 203: 2}, 0, 5)
+
+
+def h3_frame(ranks: dict[tuple[str, str], list[int]] | None = None, default: int = 2) -> pd.DataFrame:
+    """Runs table for the 6 cells x 3 models x 3 seeds on GRID. `ranks` sets L* rank per cell and seed."""
+    ranks = ranks or {}
+    cells = [("baseline", "baseline"), ("volume", "100"), ("volume", "1000"),
+             ("banks", "5"), ("banks", "10"), ("arrival", "burst")]  # fmt: skip
+    rows = []
+    for factor, level in cells:
+        for model in MODELS.values():
+            for i, seed in enumerate(SEEDS):
+                rank = ranks.get((factor, level), [default] * len(SEEDS))[i]
+                for index, m in enumerate(GRID):
+                    rows.append({"factor": factor, "factor_level": level, "model": model, "seed": seed,
+                                 "jpy_multiplier": m, "n_total": 100, "n_settled": 100 if index >= rank else 0,
+                                 "ample_cell": m == 1.0, "n_insufficient_funds": 0, "git_commit": "abc123"})
+    return pd.DataFrame(rows)
+
+
+def test_lstar_table_columns_and_rows():
+    table = verdicts.lstar_table(h3_frame({("banks", "10"): [1, 2, 3]}))
+    assert list(table.columns) == verdicts.LSTAR_COLUMNS
+    assert len(table) == 6 * 3 * len(SEEDS)
+    part = table[(table["level"] == "10") & (table["model"] == "atomic")].sort_values("seed")
+    assert part["lstar"].tolist() == ["0.5", "1", "not_reached"]
+    assert part["not_reached"].tolist() == [False, False, True]
+    assert table[(table["level"] == "baseline")]["censored_low"].eq(False).all()
+
+
+def test_lstar_table_missing_grid_level_is_an_error():
+    runs = h3_frame()
+    runs = runs.drop(runs[(runs["factor"] == "volume") & (runs["factor_level"] == "100")
+                          & (runs["model"] == "atomic") & (runs["seed"] == 201)
+                          & (runs["jpy_multiplier"] == 0.5)].index)
+    with pytest.raises(ValueError, match="grid levels missing"):
+        verdicts.lstar_table(runs)
+
+
+def test_h3_rows_has_nine_rows_with_factor_and_model():
+    rows = verdicts.h3_rows(h3_frame())
+    assert len(rows) == 9
+    assert [(r["factor"], r["model"]) for r in rows] == [
+        (f, m) for f in ("volume", "banks", "arrival") for m in ("sequential", "prefunded", "atomic")]
+    assert all(r["hypothesis"] == "H3" and r["n_seeds"] == 3 for r in rows)
+
+
+def h3_by_factor(rows: list[dict]) -> dict[str, dict]:
+    return {r["factor"]: r for r in rows if r["model"] == "atomic"}
+
+
+def test_h3_low_high_cell_mapping_banks_only_differs():
+    # Only banks 10 differs from the baseline cell (2 banks): L* rank 1 vs 2 in every seed (disjoint, uncensored).
+    # The 5-bank cell is set to something else to prove it is not used.
+    rows = verdicts.h3_rows(h3_frame({("banks", "10"): [1, 1, 1], ("banks", "5"): [2, 2, 2]}, default=2))
+    by = h3_by_factor(rows)
+    assert by["banks"]["verdict"] == SUPPORTED
+    assert (by["banks"]["low_level"], by["banks"]["high_level"]) == ("2", "10")
+    assert (by["banks"]["low_min"], by["banks"]["high_max"]) == ("1", "0.5")
+    assert by["volume"]["verdict"] == NOT_SUPPORTED and by["arrival"]["verdict"] == NOT_SUPPORTED
+    assert by["banks"]["n_seeds_equal"] == 0 and by["volume"]["n_seeds_equal"] == 3
+
+
+def test_h3_low_high_cell_mapping_volume_and_arrival():
+    ranks = {("volume", "100"): [2, 2, 2], ("volume", "1000"): [1, 1, 1],
+             ("arrival", "burst"): [1, 1, 1], ("baseline", "baseline"): [2, 2, 2]}  # fmt: skip
+    by = h3_by_factor(verdicts.h3_rows(h3_frame(ranks)))
+    assert by["volume"]["verdict"] == SUPPORTED
+    assert (by["volume"]["low_level"], by["volume"]["high_level"]) == ("100", "1000")
+    assert by["arrival"]["verdict"] == SUPPORTED
+    assert (by["arrival"]["low_level"], by["arrival"]["high_level"]) == ("sequential", "burst")
+    assert by["banks"]["verdict"] == NOT_SUPPORTED  # banks 10 stays at default rank 2 = baseline rank
+
+
+def test_h3_censored_row_is_flagged():
+    rows = verdicts.h3_rows(h3_frame({("volume", "1000"): [0, 1, 1]}))
+    row = h3_by_factor(rows)["volume"]
+    assert row["verdict"] == INCONCLUSIVE and row["censored"] is True and row["note"] == "censored"
+
+
+def test_h3_ample_violation_withholds_every_verdict():
+    runs = h3_frame({("banks", "10"): [1, 1, 1]})
+    runs.loc[(runs["jpy_multiplier"] == 1.0) & (runs["factor"] == "volume"), "n_insufficient_funds"] = 1
+    rows = verdicts.h3_rows(runs)
+    assert len(rows) == 9
+    assert all(r["verdict"] == "" and r["note"] == verdicts.AMPLE_WITHHELD_NOTE for r in rows)
+
+
+def test_build_h3_provenance_and_seed_warning(capsys):
+    table = verdicts.build_h3(h3_frame())
+    assert list(table.columns) == verdicts.H3_COLUMNS
+    assert (table["git_commit"] == "abc123").all() and (table["seeds"] == "201-203").all()
+    assert "not exactly 1-30" in capsys.readouterr().out
+    assert table[table["hypothesis"] == "input_check"]["note"].iloc[0].startswith("WARNING")
+
+
+def test_build_h3_dirty_commit_warning(capsys):
+    runs = h3_frame()
+    runs["git_commit"] = "abc123-dirty"
+    table = verdicts.build_h3(runs)
+    assert "dirty" in capsys.readouterr().out
+    assert "dirty" in table[table["hypothesis"] == "input_check"]["note"].iloc[0]
+
+
+def test_h3_main_writes_files_and_refuses_overwrite(tmp_path):
+    h3_frame().to_csv(tmp_path / "sensitivity_run_metrics.csv", index=False)
+    verdicts.main_h3(results_dir=tmp_path)
+    assert (tmp_path / "lstar_by_seed.csv").exists() and (tmp_path / "h3_verdicts.csv").exists()
+    with pytest.raises(FileExistsError):
+        verdicts.main_h3(results_dir=tmp_path)
+    verdicts.main_h3(results_dir=tmp_path, force=True)
+
+
+def test_h3_main_missing_input(tmp_path):
+    with pytest.raises(ValueError, match="not found"):
+        verdicts.main_h3(results_dir=tmp_path)
+
+
+def test_cli_h3_subcommand_and_day12_behaviour_unchanged(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(verdicts, "main_h3", lambda **kw: seen.update(h3=kw))
+    monkeypatch.setattr(verdicts, "main", lambda **kw: seen.update(old=kw))
+    assert verdicts.cli(["h3", "--force"]) == 0
+    assert verdicts.cli(["--force"]) == 0
+    assert verdicts.cli([]) == 0
+    assert seen == {"h3": {"force": True}, "old": {"force": False}}
+    monkeypatch.setattr(verdicts, "main_h3", lambda **kw: (_ for _ in ()).throw(FileExistsError("x")))
+    assert verdicts.cli(["h3"]) == 1
+
+
+def test_lstar_rejects_non_positive_n_total():
+    with pytest.raises(ValueError, match="n_total"):
+        verdicts.lstar({1.0: (0, 0), 0.5: (10, 10)})
+    with pytest.raises(ValueError, match="n_total"):
+        verdicts.lstar({1.0: (10, 10), 0.5: (0, 0)})
+
+
+def test_lstar_ignores_mapping_order():
+    levels = {1.0: (100, 100), 0.5: (50, 100), 0.25: (100, 100), 0.125: (100, 100)}
+    expected = verdicts.lstar(levels)
+    assert expected == (3, "1")
+    assert verdicts.lstar(dict(sorted(levels.items()))) == expected  # ascending
+    assert verdicts.lstar(dict(sorted(levels.items(), reverse=True))) == expected  # descending
+    shuffled = {k: levels[k] for k in (0.25, 1.0, 0.125, 0.5)}
+    assert verdicts.lstar(shuffled) == expected
+
+
+@pytest.mark.parametrize("factor, level", [("baseline", "baseline"), ("volume", "100"), ("volume", "1000"),
+                                           ("banks", "10"), ("arrival", "burst")])
+def test_h3_rows_raises_when_a_needed_cell_is_missing(factor, level):
+    runs = h3_frame()
+    runs = runs[~((runs["factor"] == factor) & (runs["factor_level"] == level))]
+    with pytest.raises(ValueError, match="missing or has no seeds"):
+        verdicts.h3_rows(runs)
+
+
+def test_h3_rows_does_not_need_the_five_bank_cell():
+    runs = h3_frame()
+    runs = runs[~((runs["factor"] == "banks") & (runs["factor_level"] == "5"))]
+    assert len(verdicts.h3_rows(runs)) == 9

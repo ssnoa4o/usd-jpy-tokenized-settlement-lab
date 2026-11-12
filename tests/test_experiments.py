@@ -828,3 +828,270 @@ def test_nothing_written_when_stress_self_check_fails(tmp_path, monkeypatch):
         experiments.main_stress(results_dir=tmp_path, seeds=[201], count=STRESS_COUNT)
     assert not (tmp_path / "stress_run_metrics.csv").exists()
     assert (tmp_path / "experiment_log.csv").read_text() == log_before
+
+
+# ====================================================================== sensitivity (Day 13)
+# Exp2 x Exp3. Test seeds 201+ only; every output goes to tmp_path. Small counts via `cells`.
+
+SENS_COUNT = 30
+
+
+def small_cells() -> list[experiments.SensitivityCell]:
+    """The 6 real cells with small counts (baseline count must match the stress run count)."""
+    cells = experiments.sensitivity_cells()
+    sizes = {"volume_100": 20, "volume_1000": 60}
+    return [experiments.SensitivityCell(c.name, c.factor, c.factor_level, sizes.get(c.name, SENS_COUNT),
+                                        c.n_banks, c.arrival) for c in cells]  # fmt: skip
+
+
+def run_sensitivity(tmp_path: Path, seeds=SEEDS, with_stress: bool = True, **kwargs):
+    """Exp1 + stress (count 30, same seeds) for the inputs, then the small sensitivity run."""
+    write_stress_calibration(tmp_path / "calibration.csv")
+    experiments.main(results_dir=tmp_path, seeds=seeds, count=COUNT)
+    if with_stress:
+        experiments.main_stress(results_dir=tmp_path, seeds=seeds, count=SENS_COUNT)
+    return experiments.main_sensitivity(results_dir=tmp_path, seeds=seeds, cells=small_cells(), **kwargs)
+
+
+def test_sensitivity_cell_table_is_exact():
+    assert [(c.name, c.factor, c.factor_level, c.count, c.n_banks, c.arrival)
+            for c in experiments.sensitivity_cells()] == [
+        ("baseline", "baseline", "baseline", 500, 2, "sequential"),
+        ("volume_100", "volume", "100", 100, 2, "sequential"),
+        ("volume_1000", "volume", "1000", 1000, 2, "sequential"),
+        ("banks_5", "banks", "5", 500, 5, "sequential"),
+        ("banks_10", "banks", "10", 500, 10, "sequential"),
+        ("arrival_burst", "arrival", "burst", 500, 2, "burst"),
+    ]
+
+
+def test_sensitivity_grid_comes_from_calibration():
+    grid = experiments.sensitivity_multipliers(fake_levels(lower=(0.5, 0.25)))
+    assert grid == [1.0, 0.5, 0.25]
+
+
+def test_sensitivity_run_count_columns_and_files(tmp_path):
+    result = run_sensitivity(tmp_path)
+    assert result["n_runs"] == 6 * 3 * 3 * len(SEEDS) == 108
+    runs = pd.read_csv(tmp_path / "sensitivity_run_metrics.csv", dtype={"factor_level": str})
+    assert len(runs) == 108
+    assert "status" not in runs.columns
+    assert set(runs["experiment"]) == {"exp2_x_exp3"}
+    for column in ("factor", "factor_level", "count", "n_banks", "arrival", "jpy_multiplier", "ample_cell"):
+        assert column in runs.columns
+    assert set(runs["condition"]) == {f"{c.name}/jpy_{m}" for c in small_cells() for m in ("1", "0.5", "0.25")}
+    results = pd.read_csv(tmp_path / "sensitivity_results.csv")
+    assert list(results.columns) == ["experiment"] + experiments.AGGREGATE_COLUMNS
+    summary = pd.read_csv(tmp_path / "summary.csv")
+    assert set(summary["experiment"]) == {"exp1_baseline", "exp3_liquidity", "exp4_failure", "exp4_delay",
+                                          "exp4_h4b", "exp2_x_exp3"}  # fmt: skip
+    log = pd.read_csv(tmp_path / "experiment_log.csv")
+    assert (log["experiment"] == "exp2_x_exp3").sum() == 108
+
+
+def test_only_grid_level_one_is_an_ample_cell(tmp_path):
+    run_sensitivity(tmp_path)
+    runs = pd.read_csv(tmp_path / "sensitivity_run_metrics.csv")
+    assert (runs["ample_cell"] == (runs["jpy_multiplier"] == 1.0)).all()
+
+
+def test_n_banks_arrival_and_count_reach_the_engine(monkeypatch):
+    calls = []
+    real = transactions.generate_transactions
+
+    def spy(**kwargs):
+        data = real(**kwargs)
+        calls.append((kwargs, data))
+        return data
+
+    monkeypatch.setattr(transactions, "generate_transactions", spy)
+    seen_params = []
+    real_run = simulator.run_model
+
+    def spy_run(data, model, params):
+        seen_params.append((len(data), params.n_banks))
+        return real_run(data, model, params)
+
+    monkeypatch.setattr(simulator, "run_model", spy_run)
+    runs = experiments.run_sensitivity_all(100_000_000, JPY_REF, small_cells(), [1.0, 0.5], seeds=[201])
+    by_name = {c["n_banks"]: d for c, d in calls}
+    assert set(by_name) == {2, 5, 10}
+    banks10 = runs[runs["factor_level"] == "10"]
+    assert set(banks10["n_banks"]) == {10} and set(banks10["arrival"]) == {"sequential"}
+    banks10_data = next(d for c, d in calls if c["n_banks"] == 10)
+    assert len(set(banks10_data["usd_payer"]) | set(banks10_data["jpy_payer"])) > 2  # really uses many banks
+    assert {n for n, _ in seen_params if _ == 10} == {SENS_COUNT}
+    burst = next(d for c, d in calls if c["arrival"] == "burst")
+    seq = next(d for c, d in calls if c["arrival"] == "sequential" and c["count"] == SENS_COUNT and c["n_banks"] == 2)
+    assert burst["arrival_time"].tolist() != seq["arrival_time"].tolist()
+    assert set(runs[runs["factor_level"] == "burst"]["arrival"]) == {"burst"}
+    assert set(runs[runs["factor_level"] == "1000"]["count"]) == {60}
+    assert set(runs[runs["factor_level"] == "100"]["count"]) == {20}
+
+
+def test_transactions_shared_across_grid_levels_and_models(monkeypatch):
+    seen = []
+    real = simulator.run_model
+
+    def spy(data, model, params):
+        seen.append((id(data), model, params.initial_jpy))
+        return real(data, model, params)
+
+    monkeypatch.setattr(simulator, "run_model", spy)
+    cells = small_cells()[:2]  # baseline and volume_100
+    experiments.run_sensitivity_all(100_000_000, JPY_REF, cells, [1.0, 0.5, 0.25], seeds=[201])
+    per_cell = [seen[i:i + 9] for i in range(0, len(seen), 9)]
+    assert len(per_cell) == 2
+    for group in per_cell:
+        assert len({d for d, _, _ in group}) == 1  # one data set for 3 levels x 3 models
+        assert len({j for _, _, j in group}) == 3
+    assert per_cell[0][0][0] != per_cell[1][0][0]  # different cells: different data
+
+
+def test_baseline_cross_check_passes_against_a_matching_stress_run(tmp_path, capsys):
+    result = run_sensitivity(tmp_path)
+    assert result["cross_check"].startswith("OK")
+    assert "Baseline cross-check vs Exp3: OK" in capsys.readouterr().out
+
+
+def test_cross_check_skipped_without_exp3_rows_and_raises_on_no_overlap(tmp_path, capsys):
+    result = run_sensitivity(tmp_path, seeds=SEEDS)
+    sens = pd.read_csv(tmp_path / "sensitivity_run_metrics.csv")
+    stress = pd.read_csv(tmp_path / "stress_run_metrics.csv")
+    assert result["cross_check"].startswith("OK")
+    no_exp3 = stress[stress["experiment"] != "exp3_liquidity"]
+    assert experiments.cross_check_baseline(sens, no_exp3).startswith("skipped")
+    assert "WARNING" in capsys.readouterr().out
+    with pytest.raises(RuntimeError, match="partial or no overlap"):
+        experiments.cross_check_baseline(sens, stress.assign(seed=stress["seed"] + 1000))
+
+
+def test_cross_check_fails_when_a_value_is_altered(tmp_path):
+    run_sensitivity(tmp_path)
+    sens = pd.read_csv(tmp_path / "sensitivity_run_metrics.csv")
+    stress = pd.read_csv(tmp_path / "stress_run_metrics.csv")
+    assert experiments.cross_check_baseline(sens, stress).startswith("OK")
+    stress.loc[(stress["experiment"] == "exp3_liquidity") & (stress["model"] == "atomic")
+               & (stress["seed"] == 202) & (stress["jpy_multiplier"] == 0.5), "n_settled"] += 1
+    with pytest.raises(RuntimeError, match="n_settled"):
+        experiments.cross_check_baseline(sens, stress)
+
+
+def test_cross_check_on_small_frames_missing_row_and_nan():
+    sens = pd.DataFrame({"factor": ["baseline"] * 2, "seed": [1, 1], "model": ["sequential"] * 2,
+                         "jpy_multiplier": [1.0, 0.5], "x": [float("nan"), 2.0], "condition": ["a", "b"]})
+    stress = pd.DataFrame({"experiment": ["exp3_liquidity"] * 2, "seed": [1, 1], "model": ["sequential"] * 2,
+                           "jpy_multiplier": [1.0, 0.5], "x": [float("nan"), 2.0], "condition": ["z", "y"]})
+    assert experiments.cross_check_baseline(sens, stress).startswith("OK")  # NaN equals NaN, condition ignored
+    with pytest.raises(RuntimeError, match="not in the sensitivity baseline"):
+        experiments.cross_check_baseline(sens.iloc[:1], stress)
+    with pytest.raises(RuntimeError, match="not in Exp3"):
+        experiments.cross_check_baseline(sens, stress.iloc[:1])
+
+
+def test_sensitivity_refuses_existing_output_and_force_overwrites(tmp_path):
+    run_sensitivity(tmp_path)
+    with pytest.raises(FileExistsError):
+        experiments.main_sensitivity(results_dir=tmp_path, seeds=SEEDS, cells=small_cells())
+    experiments.main_sensitivity(results_dir=tmp_path, seeds=SEEDS, cells=small_cells(), force=True)
+
+
+def test_sensitivity_refuses_dirty_tree_unless_allowed(tmp_path, monkeypatch):
+    write_stress_calibration(tmp_path / "calibration.csv")
+    experiments.main(results_dir=tmp_path, seeds=SEEDS, count=COUNT)
+    experiments.main_stress(results_dir=tmp_path, seeds=SEEDS, count=SENS_COUNT)
+    monkeypatch.setattr(experiments, "git_version", lambda: "abc123-dirty")
+    with pytest.raises(experiments.DirtyTreeError):
+        experiments.main_sensitivity(results_dir=tmp_path, seeds=SEEDS, cells=small_cells())
+    assert not (tmp_path / "sensitivity_run_metrics.csv").exists()
+    experiments.main_sensitivity(results_dir=tmp_path, seeds=SEEDS, cells=small_cells(), allow_dirty=True)
+
+
+def test_sensitivity_needs_baseline_and_stress_results(tmp_path):
+    write_stress_calibration(tmp_path / "calibration.csv")
+    with pytest.raises(ValueError, match="not found"):
+        experiments.main_sensitivity(results_dir=tmp_path, seeds=SEEDS, cells=small_cells())
+    experiments.main(results_dir=tmp_path, seeds=SEEDS, count=COUNT)
+    with pytest.raises(ValueError, match="not found"):
+        experiments.main_sensitivity(results_dir=tmp_path, seeds=SEEDS, cells=small_cells())
+
+
+def test_sensitivity_cross_check_failure_writes_nothing(tmp_path):
+    write_stress_calibration(tmp_path / "calibration.csv")
+    experiments.main(results_dir=tmp_path, seeds=SEEDS, count=COUNT)
+    experiments.main_stress(results_dir=tmp_path, seeds=SEEDS, count=50)  # baseline count differs from 30
+    with pytest.raises(RuntimeError, match="cross-check"):
+        experiments.main_sensitivity(results_dir=tmp_path, seeds=SEEDS, cells=small_cells())
+    assert not (tmp_path / "sensitivity_run_metrics.csv").exists()
+
+
+def test_sensitivity_does_not_change_exp1_or_stress_outputs(tmp_path):
+    write_stress_calibration(tmp_path / "calibration.csv")
+    experiments.main(results_dir=tmp_path, seeds=SEEDS, count=COUNT)
+    experiments.main_stress(results_dir=tmp_path, seeds=SEEDS, count=SENS_COUNT)
+    before = {n: (tmp_path / n).read_bytes() for n in
+              ("run_metrics.csv", "baseline_results.csv", "stress_run_metrics.csv", "stress_test_results.csv")}  # fmt: skip
+    experiments.main_sensitivity(results_dir=tmp_path, seeds=SEEDS, cells=small_cells())
+    assert {n: (tmp_path / n).read_bytes() for n in before} == before
+
+
+def test_run_one_default_arrival_is_unchanged():
+    data = transactions.generate_transactions(count=COUNT, seed=201)
+    cond = experiments.CONDITIONS[0]
+    row = experiments.run_one(data, Model.ATOMIC, cond, 201, 100_000_000, JPY_REF, COUNT, 2, 60)
+    assert row["arrival"] == "sequential"
+
+
+def test_cli_accepts_sensitivity(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(experiments, "main_sensitivity", lambda **kw: seen.update(kw))
+    assert experiments.cli(["sensitivity", "--force", "--allow-dirty"]) == 0
+    assert seen == {"force": True, "allow_dirty": True}
+
+
+def test_integration_sensitivity_then_h3(tmp_path):
+    from src import verdicts
+    run_sensitivity(tmp_path)
+    table = verdicts.main_h3(results_dir=tmp_path)
+    assert len(table[table["hypothesis"] == "H3"]) == 9
+    lstar = pd.read_csv(tmp_path / "lstar_by_seed.csv")
+    assert len(lstar) == 6 * 3 * len(SEEDS)
+
+
+def test_cross_check_partial_seed_overlap_raises():
+    sens = pd.DataFrame({"factor": ["baseline"] * 2, "seed": [1, 2], "model": ["atomic"] * 2,
+                         "jpy_multiplier": [1.0, 1.0], "x": [1, 2]})
+    stress = pd.DataFrame({"experiment": ["exp3_liquidity"], "seed": [1], "model": ["atomic"],
+                           "jpy_multiplier": [1.0], "x": [1]})
+    with pytest.raises(RuntimeError, match=r"\[2\]"):
+        experiments.cross_check_baseline(sens, stress)
+    bigger = pd.concat([stress, stress.assign(seed=2, x=2), stress.assign(seed=3, x=3)])
+    assert experiments.cross_check_baseline(sens, bigger).startswith("OK")  # subset is fine
+
+
+def test_cross_check_without_common_columns_raises(monkeypatch):
+    sens = pd.DataFrame({"factor": ["baseline"], "seed": [1], "model": ["atomic"], "jpy_multiplier": [1.0]})
+    stress = pd.DataFrame({"experiment": ["exp3_liquidity"], "seed": [1], "model": ["atomic"],
+                           "jpy_multiplier": [1.0]})
+    assert experiments.cross_check_baseline(sens, stress).startswith("OK")
+    # Make every shared column "skipped": nothing is left to compare, so the check must not pass.
+    monkeypatch.setattr(experiments, "CROSS_CHECK_SKIP", experiments.CROSS_CHECK_SKIP + ("seed", "model", "jpy_multiplier"))
+    with pytest.raises(RuntimeError, match="no common columns"):
+        experiments.cross_check_baseline(sens, stress)
+
+
+def test_cross_check_empty_baseline_raises():
+    sens = pd.DataFrame({"factor": ["volume"], "seed": [1], "model": ["atomic"], "jpy_multiplier": [1.0]})
+    stress = pd.DataFrame({"experiment": ["exp3_liquidity"], "seed": [1], "model": ["atomic"],
+                           "jpy_multiplier": [1.0]})
+    with pytest.raises(RuntimeError, match="no baseline cell"):
+        experiments.cross_check_baseline(sens, stress)
+
+
+def test_force_warns_that_h3_files_are_stale(tmp_path, capsys):
+    run_sensitivity(tmp_path)
+    (tmp_path / "lstar_by_seed.csv").write_text("x\n")
+    (tmp_path / "h3_verdicts.csv").write_text("x\n")
+    experiments.main_sensitivity(results_dir=tmp_path, seeds=SEEDS, cells=small_cells(), force=True)
+    out = capsys.readouterr().out
+    assert "stale" in out and "python -m src.verdicts h3 --force" in out

@@ -42,6 +42,9 @@ technical_failure is a self-check error (it cannot happen at 0%); partials cause
 insufficient funds go through the ample path. The atomic model must have no partial, no
 principal exposure and principal_exposure_usd_seconds == 0.
 
+Day 13: `python -m src.experiments sensitivity [--force] [--allow-dirty]` runs Exp2 x Exp3
+(6 factor cells x the JPY grid), see the "sensitivity" section below.
+
 Day 12: `python -m src.experiments stress [--force] [--allow-dirty]` runs Exp3 (JPY
 liquidity grid) and Exp4 (failure and delay levels, plus the H4b cells), see the
 "stress" section below. The grid and the H4b level are read from results/calibration.csv.
@@ -168,8 +171,12 @@ def check_run(
 def run_one(
     data: pd.DataFrame, model: Model, condition: ExpCondition, seed: int,
     initial_usd: int, initial_jpy: int, count: int, n_banks: int, delay_seconds: float,
+    arrival: str = ARRIVAL,
 ) -> dict[str, object]:
-    """Run one model once, check it, and return one run_metrics row (without git / time)."""
+    """Run one model once, check it, and return one run_metrics row (without git / time).
+
+    `arrival` only labels the row: the arrival pattern is already inside `data`.
+    """
     params = SimulationParams(
         seed=seed, initial_usd=initial_usd, initial_jpy=initial_jpy,
         delay_seconds=delay_seconds, failure_probability=condition.failure_probability,
@@ -180,7 +187,7 @@ def run_one(
     check_run(model, condition, values, ledger, params)
     return {
         "experiment": condition.experiment, "condition": condition.name, "model": model.value,
-        "seed": seed, "count": count, "n_banks": n_banks, "arrival": ARRIVAL,
+        "seed": seed, "count": count, "n_banks": n_banks, "arrival": arrival,
         "delay_seconds": delay_seconds, "failure_probability": condition.failure_probability,
         "initial_usd": initial_usd, "initial_jpy": initial_jpy,
         **values,
@@ -563,16 +570,220 @@ def main_stress(
             "h4b_skipped": levels.h4b_multiplier is None, "git_commit": commit}  # fmt: skip
 
 
+# ------------------------------------------------------------------ sensitivity (Exp2 x Exp3, Day 13)
+
+SENSITIVITY_RUN_METRICS_FILE = "sensitivity_run_metrics.csv"
+SENSITIVITY_RESULTS_FILE = "sensitivity_results.csv"
+EXP2X3 = "exp2_x_exp3"
+# Columns that may differ between a sensitivity row and the Exp3 row it repeats.
+CROSS_CHECK_SKIP = ("git_commit", "run_utc", "experiment", "condition", "factor", "factor_level", "status")
+
+
+@dataclass(frozen=True)
+class SensitivityCell:
+    """One Exp2 factor cell: one factor changed, the others at baseline."""
+
+    name: str
+    factor: str  # volume / banks / arrival / baseline
+    factor_level: str
+    count: int = COUNT
+    n_banks: int = N_BANKS
+    arrival: str = ARRIVAL
+
+
+def sensitivity_cells() -> list[SensitivityCell]:
+    """The 6 Exp2 cells (methodology sec. 6, Day 13 decision 6), in a fixed order."""
+    return [
+        SensitivityCell("baseline", "baseline", "baseline"),
+        SensitivityCell("volume_100", "volume", "100", count=100),
+        SensitivityCell("volume_1000", "volume", "1000", count=1000),
+        SensitivityCell("banks_5", "banks", "5", n_banks=5),
+        SensitivityCell("banks_10", "banks", "10", n_banks=10),
+        SensitivityCell("arrival_burst", "arrival", "burst", arrival="burst"),
+    ]
+
+
+def sensitivity_multipliers(levels: StressLevels) -> list[float]:
+    """JPY grid: multiplier 1 first, then the lower multipliers from calibration.csv."""
+    return [1.0, *levels.lower_multipliers]
+
+
+def run_sensitivity_all(
+    initial_usd: int, reference_jpy: int, cells: Sequence[SensitivityCell], multipliers: Sequence[float],
+    seeds: Sequence[int] = MAIN_SEEDS,
+) -> pd.DataFrame:
+    """Run every (seed, cell, grid level, model). Transactions: once per (seed, cell).
+
+    The data of one (seed, cell) is shared by all grid levels and all three models.
+    Only grid level 1 is an ample cell. check_stress (check 1) runs over the ample cells.
+    """
+    commit = git_version()
+    rows: list[dict[str, object]] = []
+    for seed in seeds:
+        for cell in cells:
+            data = transactions.generate_transactions(
+                count=cell.count, fx_rate=FX_RATE, seed=seed, n_banks=cell.n_banks, arrival=cell.arrival
+            )
+            for multiplier in multipliers:
+                condition = ExpCondition(f"{cell.name}/jpy_{level_text(multiplier)}", STRESS_FAILURE_PROBABILITY,
+                                         EXP2X3, DELAY_SECONDS, multiplier, multiplier == 1.0)  # fmt: skip
+                jpy = initial_jpy_for(reference_jpy, multiplier)
+                for model in MODELS:
+                    row = run_one(data, model, condition, seed, initial_usd, jpy, cell.count,
+                                  cell.n_banks, DELAY_SECONDS, cell.arrival)  # fmt: skip
+                    row["factor"] = cell.factor
+                    row["factor_level"] = cell.factor_level
+                    row["jpy_multiplier"] = multiplier
+                    row["ample_cell"] = condition.ample
+                    row["status"] = run_status(row, condition.ample)
+                    row["git_commit"] = commit
+                    row["run_utc"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    rows.append(row)
+    runs = pd.DataFrame(rows)
+    check_stress(runs)
+    extra = ("factor", "factor_level", "jpy_multiplier", "ample_cell")
+    columns = [c for c in runs.columns if c not in extra]
+    after_condition = columns.index("condition") + 1
+    after_jpy = columns.index("initial_jpy") + 1
+    ordered = (columns[:after_condition] + ["factor", "factor_level"] + columns[after_condition:after_jpy]
+               + ["jpy_multiplier", "ample_cell"] + columns[after_jpy:])  # fmt: skip
+    return runs[ordered]
+
+
+def same_value(first: object, second: object) -> bool:
+    """True if two table values are equal (two missing values count as equal)."""
+    if pd.isna(first) and pd.isna(second):
+        return True
+    return bool(first == second)
+
+
+def cross_check_baseline(sensitivity: pd.DataFrame, stress: pd.DataFrame) -> str:
+    """Check that the `baseline` cell repeats the Exp3 rows, seed by seed and model by model.
+
+    Compares every column both tables share except CROSS_CHECK_SKIP. Only seeds present in
+    both tables are compared. The baseline seeds must be a subset of the Exp3 seeds.
+    Returns "OK (...)", or "skipped (...)" with a printed WARNING if the stress table has no
+    Exp3 rows at all. Raises RuntimeError with the first mismatch, on partial or no seed
+    overlap, on an empty baseline cell, or when no column can be compared.
+    """
+    base = sensitivity[sensitivity["factor"] == "baseline"]
+    exp3 = stress[stress["experiment"] == EXP3]
+    if exp3.empty:
+        print("WARNING: baseline cross-check skipped: the stress table has no Exp3 rows.")
+        return "skipped (no Exp3 rows)"
+    if base.empty:
+        raise RuntimeError("cross-check: the sensitivity table has no baseline cell rows")
+    missing = sorted(set(base["seed"]) - set(exp3["seed"]))
+    if missing:
+        raise RuntimeError(f"cross-check: baseline seeds {missing} are not in the Exp3 rows "
+                           "(partial or no overlap); run the stress experiment with the same seeds")  # fmt: skip
+    seeds = sorted(set(base["seed"]))
+    columns = [c for c in base.columns if c in exp3.columns and c not in CROSS_CHECK_SKIP]
+    if not columns:
+        raise RuntimeError("cross-check: no common columns to compare")
+    key = ["seed", "model", "jpy_multiplier"]
+
+    def index(table: pd.DataFrame) -> dict[tuple, dict]:
+        part = table[table["seed"].isin(seeds)]
+        return {(r["seed"], r["model"], r["jpy_multiplier"]): r for r in part.to_dict("records")}
+
+    mine, theirs = index(base), index(exp3)
+    for k in sorted(mine, key=str):
+        if k not in theirs:
+            raise RuntimeError(f"cross-check: {dict(zip(key, k))} is in the sensitivity baseline but not in Exp3")
+        for column in columns:
+            if not same_value(mine[k][column], theirs[k][column]):
+                raise RuntimeError(f"cross-check mismatch at {dict(zip(key, k))}, column {column}: "
+                                   f"sensitivity {mine[k][column]!r} vs Exp3 {theirs[k][column]!r}")  # fmt: skip
+    for k in sorted(set(theirs) - set(mine), key=str):
+        raise RuntimeError(f"cross-check: {dict(zip(key, k))} is in Exp3 but not in the sensitivity baseline")
+    return f"OK ({len(mine)} rows, {len(seeds)} seeds, {len(columns)} columns)"
+
+
+def write_sensitivity_outputs(runs: pd.DataFrame, results_dir: Path) -> None:
+    """Write sensitivity_run_metrics, sensitivity_results, rebuild summary.csv, append the log.
+
+    summary.csv = Exp1 table (baseline_results.csv) + stress table (stress_test_results.csv)
+    + the sensitivity table.
+    """
+    results_dir.mkdir(parents=True, exist_ok=True)
+    table = aggregate_stress(runs)
+    baseline = pd.read_csv(results_dir / BASELINE_FILE)
+    baseline.insert(0, "experiment", EXPERIMENT)
+    stress = pd.read_csv(results_dir / STRESS_RESULTS_FILE)
+    runs.drop(columns=["status"]).to_csv(results_dir / SENSITIVITY_RUN_METRICS_FILE, index=False, na_rep="")
+    table.to_csv(results_dir / SENSITIVITY_RESULTS_FILE, index=False, na_rep="")
+    pd.concat([baseline, stress, table], ignore_index=True).to_csv(results_dir / SUMMARY_FILE, index=False, na_rep="")
+    append_log(results_dir / LOG_FILE, log_rows(runs))
+
+
+def main_sensitivity(
+    results_dir: Path = RESULTS_DIR, calibration_path: Path | None = None, force: bool = False,
+    seeds: Sequence[int] = MAIN_SEEDS, allow_dirty: bool = False,
+    cells: Sequence[SensitivityCell] | None = None,
+) -> dict[str, object]:
+    """Run Exp2 x Exp3 and write the files. `cells` is only changed by tests (small counts).
+
+    Raises FileExistsError (output exists, no force), ValueError (bad calibration, or
+    baseline_results.csv / stress_test_results.csv missing), DirtyTreeError, or RuntimeError
+    (self-check or baseline cross-check failed; nothing is written then).
+    Returns n_runs, n_cells, ample_violated, cross_check, git_commit.
+    Known limitation (same as stress): experiment_log.csv is append-only, so a --force rerun
+    adds a second set of rows for the same runs. With --force, an existing lstar_by_seed.csv /
+    h3_verdicts.csv becomes stale: a warning is printed to regenerate them.
+    """
+    calibration_path = calibration_path or results_dir / CALIBRATION_FILE
+    outputs = (SENSITIVITY_RUN_METRICS_FILE, SENSITIVITY_RESULTS_FILE)
+    existing = [results_dir / n for n in outputs if (results_dir / n).exists()]
+    if existing and not force:
+        names = ", ".join(str(path) for path in existing)
+        raise FileExistsError(f"Output already exists: {names}. Use --force to overwrite.")
+    usd, jpy = read_reference(calibration_path)
+    levels = read_stress_levels(calibration_path)
+    for name in (BASELINE_FILE, STRESS_RESULTS_FILE):
+        if not (results_dir / name).exists():
+            raise ValueError(f"{results_dir / name} not found. Run Exp1 (baseline) and stress first: summary.csv needs it.")
+    commit = check_git_clean(allow_dirty)
+    cells = list(cells) if cells is not None else sensitivity_cells()
+    started = time.perf_counter()
+    runs = run_sensitivity_all(usd, jpy, cells, sensitivity_multipliers(levels), seeds=seeds)
+    elapsed = time.perf_counter() - started
+    stress_runs = results_dir / STRESS_RUN_METRICS_FILE
+    if stress_runs.exists():
+        cross_check = cross_check_baseline(runs, pd.read_csv(stress_runs))
+    else:
+        cross_check = f"skipped ({STRESS_RUN_METRICS_FILE} not found)"
+        print(f"WARNING: baseline cross-check skipped: {STRESS_RUN_METRICS_FILE} not found.")
+    violated = runs[runs["status"] == STATUS_AMPLE_VIOLATED]
+    if len(violated) > 0:
+        print(f"WARNING: ample reference violated in {len(violated)} run(s) (insufficient_funds > 0 at grid level 1).")
+        print("Do not change the reference silently: follow methodology sec. 6.")
+    write_sensitivity_outputs(runs, results_dir)
+    stale = [n for n in ("lstar_by_seed.csv", "h3_verdicts.csv") if (results_dir / n).exists()]
+    if stale:
+        print(f"WARNING: {', '.join(stale)} now stale (based on older sensitivity runs). "
+              "Regenerate with `python -m src.verdicts h3 --force`.")  # fmt: skip
+    print(f"Sensitivity (Exp2 x Exp3): {len(runs)} runs, {len(cells)} cells, seeds {seeds_label(list(seeds))}, "
+          f"commit {commit}, {elapsed:.1f} s")  # fmt: skip
+    print(f"Ample violated: {len(violated) > 0}")
+    print(f"Baseline cross-check vs Exp3: {cross_check}")
+    print(f"Wrote {results_dir / SENSITIVITY_RUN_METRICS_FILE}, {results_dir / SENSITIVITY_RESULTS_FILE}, "
+          f"{results_dir / SUMMARY_FILE}; appended {len(runs)} rows to {results_dir / LOG_FILE}")  # fmt: skip
+    return {"n_runs": len(runs), "n_cells": len(cells), "ample_violated": len(violated) > 0,
+            "cross_check": cross_check, "git_commit": commit}  # fmt: skip
+
+
 def cli(argv: Sequence[str] | None = None) -> int:
     """Command line entry point. Returns the exit code (0 = ok, 1 = refused)."""
     parser = argparse.ArgumentParser(description="Run an experiment.")
-    parser.add_argument("experiment", choices=["baseline", "stress"], help="which experiment to run")
+    parser.add_argument("experiment", choices=["baseline", "stress", "sensitivity"], help="which experiment to run")
     parser.add_argument("--force", action="store_true", help="overwrite existing results")
     parser.add_argument("--allow-dirty", action="store_true",
                         help="allow a run with uncommitted changes (test runs only)")
     args = parser.parse_args(argv)
     try:
-        run = main_stress if args.experiment == "stress" else main
+        runners = {"baseline": main, "stress": main_stress, "sensitivity": main_sensitivity}
+        run = runners[args.experiment]
         run(force=args.force, allow_dirty=args.allow_dirty)
     except (FileExistsError, ValueError, DirtyTreeError) as error:
         print(f"ERROR: {error}")

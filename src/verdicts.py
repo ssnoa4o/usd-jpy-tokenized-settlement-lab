@@ -4,6 +4,10 @@ Run with: python -m src.verdicts [--force]
 Input:  results/stress_run_metrics.csv (only this file)
 Output: results/verdicts.csv (never overwritten without --force)
 
+Day 13: python -m src.verdicts h3 [--force] computes L* per seed and the H3 verdicts from
+results/sensitivity_run_metrics.csv and writes results/lstar_by_seed.csv and
+results/h3_verdicts.csv (see the "H3" section at the end). It never touches verdicts.csv.
+
 The rules were fixed before any main run and are coded literally. Nothing here decides
 what the result "means"; it only labels each claim supported / not supported / inconclusive.
 
@@ -29,7 +33,8 @@ Ambiguities in hypotheses.md that this code resolves in a stated way are marked 
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
+import sys
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import pandas as pd
@@ -467,13 +472,206 @@ def main(results_dir: Path = RESULTS_DIR, force: bool = False) -> pd.DataFrame:
     return table
 
 
+# ------------------------------------------------------------------ H3 (Day 13)
+# Rules: hypotheses.md H3 and methodology.md sec. 11 "Decided on Day 13".
+
+SENSITIVITY_RUN_METRICS_FILE = "sensitivity_run_metrics.csv"
+LSTAR_FILE = "lstar_by_seed.csv"
+H3_FILE = "h3_verdicts.csv"
+LSTAR_COLUMNS = ["factor", "level", "model", "seed", "lstar", "lstar_rank", "censored_low", "not_reached"]
+H3_COLUMNS = ["hypothesis", "factor", "model", "low_level", "high_level", "role", "verdict", "censored",
+              "n_seeds", "low_min", "low_max", "high_min", "high_max", "n_seeds_equal", "note",
+              "git_commit", "seeds"]  # fmt: skip
+NOT_REACHED = "not_reached"
+LSTAR_SUCCESS_PERCENT = 95  # L* needs success rate >= 95%, compared on integers
+# (factor, label of the low level, (factor, factor_level) of the low cell, (factor, factor_level) of the high cell)
+H3_COMPARISONS = (
+    ("volume", "100", ("volume", "100"), ("volume", "1000")),
+    ("banks", "2", ("baseline", "baseline"), ("banks", "10")),
+    ("arrival", "sequential", ("baseline", "baseline"), ("arrival", "burst")),
+)
+H3_HIGH_LABELS = {"volume": "1000", "banks": "10", "arrival": "burst"}
+
+
+def lstar(levels_to_success: Mapping[float, tuple[int, int]]) -> tuple[int, str]:
+    """L* of one (cell, model, seed): returns (rank, text).
+
+    `levels_to_success` maps a JPY multiplier to (n_settled, n_total). A level qualifies if
+    n_settled * 100 >= 95 * n_total (integers, no float rates). L* is the lowest multiplier that
+    qualifies together with every higher level. Rank 0 = lowest grid level, k-1 = top level,
+    k = "not reached" (the top level fails). Text is e.g. "0.0625" or "not_reached".
+    """
+    grid = sorted(levels_to_success)
+    if not grid:
+        raise ValueError("no grid levels")
+    if any(n_total <= 0 for _, n_total in levels_to_success.values()):
+        raise ValueError("n_total must be positive at every grid level")
+    rank = len(grid)  # not reached until the top level qualifies
+    for index in range(len(grid) - 1, -1, -1):  # walk from the top level downwards
+        n_settled, n_total = levels_to_success[grid[index]]
+        if n_settled * 100 >= LSTAR_SUCCESS_PERCENT * n_total:
+            rank = index
+        else:
+            break
+    return rank, rank_text(rank, grid)
+
+
+def rank_text(rank: int, grid: Sequence[float]) -> str:
+    """Text of an L* rank: the multiplier, or "not_reached"."""
+    ordered = sorted(grid)
+    return NOT_REACHED if rank >= len(ordered) else f"{ordered[rank]:g}"
+
+
+def lstar_table(runs: pd.DataFrame) -> pd.DataFrame:
+    """One row per (factor cell, model, seed) with L*. ValueError if a grid level is missing."""
+    grid = sorted(float(m) for m in runs["jpy_multiplier"].unique())
+    rows = []
+    keys = ["factor", "factor_level", "model", "seed"]
+    for (factor, level, model, seed), group in runs.groupby(keys, sort=True):
+        found = {float(m): (int(r["n_settled"]), int(r["n_total"]))
+                 for m, r in zip(group["jpy_multiplier"], group.to_dict("records"))}  # fmt: skip
+        if len(group) != len(found) or sorted(found) != grid:
+            raise ValueError(f"grid levels missing or duplicated for {factor}/{level}/{model}/seed {seed}")
+        rank, text = lstar(found)
+        rows.append({"factor": factor, "level": level, "model": model, "seed": int(seed), "lstar": text,
+                     "lstar_rank": rank, "censored_low": rank == 0, "not_reached": rank == len(grid)})  # fmt: skip
+    return pd.DataFrame(rows, columns=LSTAR_COLUMNS)
+
+
+def range_verdict(low_ranks_by_seed: Mapping[int, int], high_ranks_by_seed: Mapping[int, int],
+                  lowest_rank: int, not_reached_rank: int) -> tuple[str, str]:
+    """H3 range rule (methodology sec. 11, Day 13 items 2-4). Returns (verdict, note).
+
+    Checked in this order: censored (any seed at either level has the lowest rank or not
+    reached) -> inconclusive; ranges [min, max] do not overlap (touching overlaps) -> supported;
+    identical for every seed number -> not supported; otherwise inconclusive.
+    ValueError if the two levels do not have the same seeds.
+    """
+    if set(low_ranks_by_seed) != set(high_ranks_by_seed):
+        raise ValueError("the two levels do not have the same seeds")
+    if not low_ranks_by_seed:
+        return INCONCLUSIVE, "no seeds"
+    low, high = list(low_ranks_by_seed.values()), list(high_ranks_by_seed.values())
+    if any(r in (lowest_rank, not_reached_rank) for r in low + high):
+        return INCONCLUSIVE, "censored"
+    if max(low) < min(high) or max(high) < min(low):
+        return SUPPORTED, "L* ranges do not overlap"
+    if all(low_ranks_by_seed[seed] == high_ranks_by_seed[seed] for seed in low_ranks_by_seed):
+        return NOT_SUPPORTED, "L* identical in every seed at both levels"
+    return INCONCLUSIVE, "ranges overlap or touch, and L* differs in some seed"
+
+
+def h3_rows(runs: pd.DataFrame) -> list[dict[str, object]]:
+    """The 9 H3 rows: factor (volume, banks, arrival) x model (A, B, C), each low vs high level.
+
+    Low / high cells: volume 100 vs 1000; banks 2 (the baseline cell) vs 10; arrival
+    sequential (the baseline cell) vs burst. If any ample violation exists in `runs`, every
+    verdict is withheld (blank verdict, AMPLE_WITHHELD_NOTE). git_commit and seeds are left
+    blank here (build_h3 fills them).
+    ValueError if any of the 5 needed cells (baseline, volume 100, volume 1000, banks 10,
+    arrival burst) is missing or has no seeds for a model.
+    """
+    table = lstar_table(runs)
+    grid_size = runs["jpy_multiplier"].nunique()
+    grid = sorted(float(m) for m in runs["jpy_multiplier"].unique())
+    withheld = len(ample_violations(runs)) > 0
+    rows = []
+    for factor, low_label, low_cell, high_cell in H3_COMPARISONS:
+        for model in (A, B, C):
+            ranks = []
+            for cell in (low_cell, high_cell):
+                part = table[(table["factor"] == cell[0]) & (table["level"].astype(str) == cell[1]) & (table["model"] == model)]
+                ranks.append({int(s): int(r) for s, r in zip(part["seed"], part["lstar_rank"])})
+            low, high = ranks
+            for cell, by_seed_ranks in zip((low_cell, high_cell), (low, high)):
+                if not by_seed_ranks:
+                    raise ValueError(f"H3 needs cell {cell[0]}/{cell[1]} for model {model}, but it is missing or has no seeds")
+            verdict, note = range_verdict(low, high, 0, grid_size)
+            out: dict[str, object] = {c: "" for c in H3_COLUMNS}
+            out.update(hypothesis="H3", factor=factor, model=model, low_level=low_label,
+                       high_level=H3_HIGH_LABELS[factor], role="decides", verdict=verdict,
+                       censored=note == "censored", n_seeds=len(low), note=note)  # fmt: skip
+            if low:
+                out.update(low_min=rank_text(min(low.values()), grid), low_max=rank_text(max(low.values()), grid),
+                           high_min=rank_text(min(high.values()), grid), high_max=rank_text(max(high.values()), grid),
+                           n_seeds_equal=sum(low[s] == high[s] for s in low))  # fmt: skip
+            if withheld:
+                out["verdict"], out["note"] = "", AMPLE_WITHHELD_NOTE
+            rows.append(out)
+    return rows
+
+
+def build_h3(runs: pd.DataFrame) -> pd.DataFrame:
+    """H3 verdict table with provenance, like build_verdicts (ample, seeds and dirty warnings)."""
+    commits = sorted(runs["git_commit"].astype(str).unique()) if "git_commit" in runs.columns else [""]
+    if len(commits) > 1:
+        raise ValueError(f"input has more than one git_commit: {commits}")
+    seeds = sorted(runs["seed"].unique())
+    rows = h3_rows(runs)
+    violated = ample_violations(runs)
+
+    def check_row(role_name: str, note: str) -> dict[str, object]:
+        out: dict[str, object] = {c: "" for c in H3_COLUMNS}
+        out.update(hypothesis=role_name, role="active_check", note=note)
+        return out
+
+    if len(violated) > 0:
+        print(f"WARNING: ample violated in {len(violated)} run(s); all H3 verdicts withheld (methodology sec. 6).")
+        rows.append(check_row("ample_check", f"ample violated in {len(violated)} run(s)"))
+    if seeds != MAIN_SEEDS:
+        print(f"WARNING: input seeds are {seeds_text(seeds)}, not exactly 1-30. Not the main run.")
+        rows.append(check_row("input_check", f"WARNING: seeds are {seeds_text(seeds)}, not exactly 1-30 (not the main run)"))
+    else:
+        rows.append(check_row("input_check", "seeds are exactly 1-30"))
+    if commits[0].endswith("-dirty"):
+        print(f"WARNING: input git_commit {commits[0]} is dirty (uncommitted changes). Not a clean main run.")
+        rows[-1]["note"] = f"{rows[-1]['note']}; WARNING: git_commit {commits[0]} is dirty"
+    for r in rows:
+        r["git_commit"], r["seeds"] = commits[0], seeds_text(seeds)
+    return pd.DataFrame(rows, columns=H3_COLUMNS)
+
+
+def main_h3(results_dir: Path = RESULTS_DIR, force: bool = False) -> pd.DataFrame:
+    """Read sensitivity_run_metrics.csv, write lstar_by_seed.csv and h3_verdicts.csv.
+
+    FileExistsError if an output exists without force; ValueError if the input is missing.
+    """
+    source = results_dir / SENSITIVITY_RUN_METRICS_FILE
+    targets = [results_dir / LSTAR_FILE, results_dir / H3_FILE]
+    existing = [t for t in targets if t.exists()]
+    if existing and not force:
+        raise FileExistsError(f"Output already exists: {', '.join(str(t) for t in existing)}. Use --force to overwrite.")
+    if not source.exists():
+        raise ValueError(f"{source} not found. Run `python -m src.experiments sensitivity` first.")
+    runs = pd.read_csv(source, dtype={"factor_level": str})
+    table = build_h3(runs)
+    lstar_table(runs).to_csv(targets[0], index=False)
+    table.to_csv(targets[1], index=False)
+    for _, line in table[table["hypothesis"] == "H3"].iterrows():
+        print(f"H3 {line['factor']}/{line['model']}: {line['verdict'] or '(withheld)'}  {line['note']}")
+    print(f"Wrote {targets[0]} and {targets[1]}")
+    return table
+
+
 def cli(argv: Sequence[str] | None = None) -> int:
-    """Command line entry point. Returns the exit code (0 = ok, 1 = refused)."""
+    """Command line entry point. Returns the exit code (0 = ok, 1 = refused).
+
+    `python -m src.verdicts [--force]` is the Day 12 command (unchanged);
+    `python -m src.verdicts h3 [--force]` is the Day 13 H3 command.
+    """
+    args_list = list(sys.argv[1:] if argv is None else argv)
+    is_h3 = bool(args_list) and args_list[0] == "h3"
     parser = argparse.ArgumentParser(description="Compute hypothesis verdicts from the stress runs.")
-    parser.add_argument("--force", action="store_true", help="overwrite results/verdicts.csv")
-    args = parser.parse_args(argv)
+    if is_h3:
+        parser = argparse.ArgumentParser(prog="verdicts h3", description="Compute L* per seed and the H3 verdicts.")
+        args_list = args_list[1:]
+    parser.add_argument("--force", action="store_true", help="overwrite the existing output files")
+    args = parser.parse_args(args_list)
     try:
-        main(force=args.force)
+        if is_h3:
+            main_h3(force=args.force)
+        else:
+            main(force=args.force)
     except (FileExistsError, ValueError) as error:
         print(f"ERROR: {error}")
         return 1
