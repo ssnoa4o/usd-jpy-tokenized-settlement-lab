@@ -318,9 +318,9 @@
 - 記録（計画の誤り、Claude）: 計画と図の選定の質問で「f3 は H2 に対応」と書いたが誤りだった。H2 の判定は B と A の Peak Liquidity Proxy の差を使い、f3 はそれを描いていない。f7 を追加し、ユーザーに説明して選定をやり直した（f7 を yes、f3 を backup）。H1b の量を描く図もなかったので f6 を足した。図は計画の 5 枚から 7 枚になった。
 - 完了（文書、`writer`）: `research/findings.md` を初版にした。冒頭に Summary of results、末尾に sec. 6 Interpretation、sec. 7 Model limitations、sec. 8 Figures。sec. 1〜5 は変えていない（差分で確認）。methodology / hypotheses は Status 行のみ。README は Status、Project status 表、Results、Usage を更新。
 - 検査（文書と図）: `integrity-checker` 1 回。数値の不一致 0 件、高 0 件。中 3 件（すべて README: Status が Day 13 のまま、Project status 表に図の行がない、壊れた文）と低（「no new number」の書き方、C の 0 の出典、"shows"）を修正した。この修正のあとの再検査はしていない。
+- commit `e4b322b`（コードと文書、ユーザー承認）。そのあと clean な状態で `python -m src.figures --force` を実行して図を作り直した（manifest の `figure_code_commit` は `e4b322b`）。作り直した HTML 7 枚は、commit 前の版と図の中身が同一であることを確認した。`slide_candidate` は元の値を入れ直した。findings sec. 8 の仮の注記は消した。
 - pytest: 1362 passed（+47）。`scripts/precommit_check.sh` は問題なし。
 - 未完了 / 既知の制限:
-  - manifest の `figure_code_commit` は、commit 後に `--force` で作り直すまで `-dirty`（findings sec. 8 に、作り直したら消す注記がある）。
   - README の「Planned outputs」「(planned)」という古い言い方（13・46・47・49 行目）は直していない。README の全面更新は Week 3（`writer`）。
   - f3 は 6 パネルで細かい。スライドに使うなら分割が必要（今は backup）。
   - HTML をブラウザでオフラインで開く確認はユーザーの手元で行う。
