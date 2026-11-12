@@ -303,3 +303,27 @@
   - `experiment_log.csv` は `--force` でも追記する（変更なし）。
   - 文書の最後の修正のあと `integrity-checker` は再実行していない。
 - 次の日（Day 14）: Plotly で主要グラフ（`results/figures/`）、プレゼン用の図の選定、findings.md の初版。Week 2 ゲートの準備。
+
+## Day 14 — Plotly の主要グラフ 7 枚・スライド用の図の選定・findings.md 初版
+- 新しいシミュレーションは実行していない。図はすべて既存の `results/*.csv` から作った（`experiment_log.csv` は 4,053 行のまま）。
+- 完了（前日の残り）: Day 13 の文書修正後の再検査を `integrity-checker` で実施。数値の不一致 0 件、高 0 件。中 2 件は README の古い記述（「Exp2 and H3 not run」など 2 か所。Day 13 の記録は「README を修正済み」としていたが、直っていたのは Status 行だけだった）。中 2 件と低 2 件（`sensitivity`・`h3` のコマンド、arrival の注記）を修正した。
+- 決定（ユーザー）: PNG 出力のため `kaleido` を追加（`requirements.txt` に `kaleido==1.5.0`）。`results/figures/plotly.min.js`（Plotly 本体、約 4.6 MB、`scripts/precommit_check.sh` が誤検知する）は `.gitignore` に入れる。スライド用の図は F1・F2・F6・F7、予備は F3・F4・F5。
+- 完了（コード、`sim-engineer`）: `src/figures.py`（`python -m src.figures`）、`tests/test_figures.py`。
+  - 図 7 枚（HTML と PNG）と `figures_manifest.csv` を `results/figures/` に出す。f1 baseline、f2 流動性ストレスの成功率・partial 率・失敗率、f3 障害確率・遅延とエクスポージャー、f4 H4b セル、f5 L\* の分布、f6 JPY 倍率ごとの元本エクスポージャー（H1b の量）、f7 遅延ごとの Peak Liquidity Proxy（H2 の量）。
+  - CSV を読むだけで、エンジンは呼ばない。判定は計算し直さない。欠けた CSV・列・条件・モデル、`n_seeds` の不一致、`n_valid` の異常はエラーで止まる。上書きは `--force`、未 commit のコードでは `--allow-dirty` が必要。`--force` でも manifest の `slide_candidate` は引き継ぐ。書かなかった古い PNG は消す。
+  - HTML は同じフォルダの `plotly.min.js` を読むので、ネットなしで開ける想定（ブラウザで開く確認は Claude 側ではしていない）。
+  - 図を作る関数（`build_f1`〜`build_f7`）は DataFrame を受け取るので、Day 15 のダッシュボードから使える。
+- 検査（コード）: `reviewer` 1 回（f1〜f5 の時点）。全点と上下の誤差バーを CSV と照合して不一致 0 件、高 0 件。中 3 件（f3 の遅延が 2 点だけで 60 s がない、PNG 失敗時に古い PNG が残る、`--force` で `slide_candidate` が消える）と低（`n_valid` を見ない、図の注記、テストが `hash()` に依存、f3・f5 のテストが一部の線だけ）をすべて修正した。わざと壊す確認は `sim-engineer` と `reviewer` が実施。検知できなかった改変（モデルの色の入れ替え、f2 のパネル名）にはテストを足した。
+  - f6・f7 と中 3 件の修正は `reviewer` のあとに入れた。`reviewer` の再レビューはしていない。f6・f7 の全点と誤差バーは `integrity-checker` が CSV と照合した（不一致 0 件）。
+- 記録（計画の誤り、Claude）: 計画と図の選定の質問で「f3 は H2 に対応」と書いたが誤りだった。H2 の判定は B と A の Peak Liquidity Proxy の差を使い、f3 はそれを描いていない。f7 を追加し、ユーザーに説明して選定をやり直した（f7 を yes、f3 を backup）。H1b の量を描く図もなかったので f6 を足した。図は計画の 5 枚から 7 枚になった。
+- 完了（文書、`writer`）: `research/findings.md` を初版にした。冒頭に Summary of results、末尾に sec. 6 Interpretation、sec. 7 Model limitations、sec. 8 Figures。sec. 1〜5 は変えていない（差分で確認）。methodology / hypotheses は Status 行のみ。README は Status、Project status 表、Results、Usage を更新。
+- 検査（文書と図）: `integrity-checker` 1 回。数値の不一致 0 件、高 0 件。中 3 件（すべて README: Status が Day 13 のまま、Project status 表に図の行がない、壊れた文）と低（「no new number」の書き方、C の 0 の出典、"shows"）を修正した。この修正のあとの再検査はしていない。
+- pytest: 1362 passed（+47）。`scripts/precommit_check.sh` は問題なし。
+- 未完了 / 既知の制限:
+  - manifest の `figure_code_commit` は、commit 後に `--force` で作り直すまで `-dirty`（findings sec. 8 に、作り直したら消す注記がある）。
+  - README の「Planned outputs」「(planned)」という古い言い方（13・46・47・49 行目）は直していない。README の全面更新は Week 3（`writer`）。
+  - f3 は 6 パネルで細かい。スライドに使うなら分割が必要（今は backup）。
+  - HTML をブラウザでオフラインで開く確認はユーザーの手元で行う。
+  - f7 はモデルごとの値を描く。H2 の判定に使うシードごとの差（B − A）は描いていない（`verdicts.csv` にある）。
+  - Week 2 ゲート（`/gate 2`）は未実施。
+- 次の日（Day 15）: Streamlit ダッシュボード（`dashboard/app.py`）。実際のエンジンを呼び、`src/figures.py` の図の関数を再利用する。その前に `/gate 2` で Week 2 のゲートを確認する。

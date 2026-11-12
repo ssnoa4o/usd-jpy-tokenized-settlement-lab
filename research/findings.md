@@ -1,8 +1,25 @@
-# Findings (draft)
+# Findings (first edition)
 
-Status: Day 13, 2026-11-11. **The Exp1 baseline was run on Day 11 (descriptive only; sec. 3). The Exp3 and Exp4 main runs were done on Day 12 and the verdicts for H1b, H2, H4a and H4b computed by pre-committed code are recorded in sec. 4. The Exp2 x Exp3 main run was done on Day 13 and the nine H3 verdicts (0 supported, 2 not supported, 7 inconclusive), computed by code committed before the run, are recorded in sec. 5.** This file records outcomes in the order they happen. Hypotheses are recorded as supported / not supported / inconclusive only after the main runs, under the rules fixed in `hypotheses.md`.
+Status: Day 14, 2026-11-12 (first edition). On Day 14 the seven figures in `results/figures/` were generated from the existing CSVs by `python -m src.figures`; no new simulation was run, and sec. 6 to 8 and the summary of results were added. Sec. 1 to 5 are unchanged. Earlier status, Day 13, 2026-11-11: **The Exp1 baseline was run on Day 11 (descriptive only; sec. 3). The Exp3 and Exp4 main runs were done on Day 12 and the verdicts for H1b, H2, H4a and H4b computed by pre-committed code are recorded in sec. 4. The Exp2 x Exp3 main run was done on Day 13 and the nine H3 verdicts (0 supported, 2 not supported, 7 inconclusive), computed by code committed before the run, are recorded in sec. 5.** This file records outcomes in the order they happen. Hypotheses are recorded as supported / not supported / inconclusive only after the main runs, under the rules fixed in `hypotheses.md`.
 
 This is an independent research prototype on synthetic data. No institution (BIS, BoJ, CLS, OSFI or any other) has reviewed, approved or endorsed it.
+
+## Summary of results
+
+Three simplified models were run on synthetic data, 30 seeds (1 to 30): Model A (Sequential), Model B (Prefunded Tokenized) and Model C (Atomic PvP). Each hypothesis item was tested under a rule fixed in `hypotheses.md` before the runs, and is recorded below as supported / not supported / inconclusive. H1a is descriptive and has no verdict. Detail and caveats are in the sections named in the table.
+
+| Item | Recorded outcome | Experiment | Figure | Detail |
+|---|---|---|---|---|
+| H1a | descriptive only (no verdict) | Exp4 failure cells | f3 | sec. 4.3, 4.4 |
+| H1b | supported | Exp3 | f6, f2 | sec. 4.3, 4.4 |
+| H2 | supported | Exp4 delay cells | f7_proxy_delay (per-model values; the per-seed gap is in `verdicts.csv`) | sec. 4.3, 4.4 |
+| H3 | 9 verdicts: 0 supported, 2 not supported, 7 inconclusive; no single combined verdict | Exp2 x Exp3 | f5 | sec. 5.2 to 5.4 |
+| H4a | not supported | Exp3 | f2 | sec. 4.3, 4.4 |
+| H4b | inconclusive | Exp4 H4b cells | f4 | sec. 4.3, 4.4 |
+
+Several outcomes follow largely from the model design. Sec. 4.4 says the direction of H1b and of H2 can be anticipated from the reservation rules, so those verdicts are not independent evidence. It also says the equality of Success Rate in A and C behind H4a may follow from the model rules (a proposed reading, not verified). Sec. 5.3 says the two "not supported" H3 verdicts (arrival, A and C) may follow largely from the model rules (not verified). Model C having Partial Rate 0 and Principal Exposure 0, and A and B having identical Principal Exposure at ample liquidity, are correctness checks, not evidence.
+
+The runs did not settle H4b and most of H3. The H3 grid is coarse, and the stress lowers JPY only. Smart-contract-style completion in the simulation is not legal settlement finality, and atomic PvP as modelled in C removes the one-leg-only state but not liquidity risk. This is an independent prototype; nothing here is a recommendation. Interpretation: sec. 6. Limitations: sec. 7. Figures: sec. 8.
 
 ## 1. Liquidity calibration, attempt 1 (methodology sec. 6)
 
@@ -382,3 +399,75 @@ From `results/sensitivity_results.csv` (mean over 30 seeds; whole USD rounded to
 | burst | 0.952 | 0.9366 | 0.952 | 31,610,000 | 23,770,000 | 23,210,000 |
 
 Result: at level 1 the Peak Liquidity Proxy rises with volume and with the number of banks in all three models. At level 0.0625, B's mean Success Rate is below A's and C's in every cell, and A's and C's means are equal in every cell. Reading (unverified): a part of the rise with banks may reflect the per-bank balances, since the proxy sums over every bank of the run (definition in methodology sec. 5). These means are cell averages; they do not decide L\*, which is computed per seed. This is a descriptive pattern in simplified models, not a test. The per-cell, per-level values for all metrics are in `results/sensitivity_results.csv`.
+
+## 6. Interpretation
+
+Added on Day 14 from the reading notes in sec. 3.3, 4.4, 5.3 and 5.4; no new run. The numbers are restated from sec. 3 to 5 and the result CSVs; where a range is given (for example the number of seeds per cell), it is read off the tables in sec. 5.2 and 5.3. For each item: what was observed (a restatement of the files), a reading that is consistent with it (tentative), and what cannot be concluded. All statements are about the simplified models on synthetic data.
+
+### 6.1 H1a (descriptive only)
+
+Observed: mean amount-based Principal Exposure of A and B was 0 at failure 0%, 2,596,141 USD at 1% and 13,604,296 USD at 5% (identical in A and B in every cell); C was 0 in every cell (A and B: `verdicts.csv`; C: `stress_test_results.csv`; sec. 4.2 and 4.3). Consistent reading: an injected second-leg failure leaves a one-leg-only transaction in A and B and none in C, and more injected failures give more exposure. Cannot be concluded: there is no verdict for H1a. C at 0 and A equal to B at ample liquidity hold by construction, so they are correctness checks. The numbers do not measure how often or how large such exposure would be in real markets. The duration-weighted measure depends on the cut-off W (sec. 3.3) and is not a measured duration.
+
+### 6.2 H1b (supported)
+
+Observed: at the three active JPY multipliers (0.0625, 0.03125, 0.0125), B had lower amount-based Principal Exposure than A in all 30 seeds, with mean differences (A minus B) of 13,068,133.901, 28,761,399.823 and 75,019,582.6613 USD. The code records "supported". The 0.09375 level was not active (26 of 30 seeds) and is not counted. Consistent reading: B reserves both legs at arrival, so it cannot leave a second-leg `insufficient_funds` `partial`; A can. The size of the gap (A 76,250,000 USD against B 1,230,000 USD at 0.0125, sec. 4.2) is a measure of how much this one mechanism matters in the simplified model. Cannot be concluded: the verdict is not independent evidence about B, because the direction is largely design-driven. The result is for JPY-only stress and does not describe USD or two-currency shortage. B's shortfall shows up as `failed` instead (Failure Rate 0.4669 at 0.0125, against 0.2273 for C and 0 for A, where the shortfall is a `partial`); the reading of why is untested (sec. 4.4, exploratory).
+
+### 6.3 H2 (supported)
+
+Observed: the B minus A gap in Peak Liquidity Proxy at 300 s minus the gap at 0 s was positive in all 30 seeds (mean 13,792,920.307 USD); the mean gaps were 3,086.3667 USD at 0 s, 2,141,185.1933 USD at 60 s and 13,796,006.6737 USD at 300 s. The code records "supported". Consistent reading: B holds the JPY leg from arrival while A pays it after the delay, so a longer delay widens the gap. Cannot be concluded: the direction can be anticipated from the reservation rule, so the size of the gap is the main information, not the verdict. The proxy is partly definitional (reserved funds count as unavailable) and ignores netting and credit; it is not Peak Liquidity. No figure plots the H2 gap (sec. 8).
+
+### 6.4 H3 (9 verdicts: 0 supported, 2 not supported, 7 inconclusive)
+
+Observed: no L\* was censored (the lowest L\* seen was 0.03125). Volume and banks gave inconclusive verdicts for A, B and C, with L\* equal in 10 to 16 seeds (11 to 13 for B). Arrival gave "not supported" for A and C (L\* identical in all 30 seeds) and "inconclusive" for B (22 of 30 seeds equal). L\* = 1 occurred in 1 to 7 of the 30 seeds per model and cell (sec. 5.3 table). Consistent reading: the grid is coarse between multipliers 1 and 0.09375, so a seed's L\* jumps to 1 when 0.09375 falls just short of 95%, and the range top of 1 is partly an effect of the grid. For A and C on arrival, burst changes only arrival times and the order of payments within each currency is unchanged (unverified). Cannot be concluded: whether volume, the number of banks or arrival pattern changes the liquidity need. There is no pooled H3 verdict and no single result stands for H3. Adding banks also adds total liquidity, so the banks factor is not a pure participant effect. The two "not supported" verdicts may follow largely from the model rules. Finer grids were not run.
+
+### 6.5 H4a (not supported)
+
+Observed: Success Rate of A equals that of C in all 150 (level, seed) pairs of Exp3 and in all 390 pairs of Exp3 and Exp4; the paired difference of the change was exactly 0 in 30 of 30 seeds at each level. The code records "not supported". Consistent reading (proposed, not verified): with USD at the reference, A and C both fail to settle exactly when the JPY leg is short, so the equality may follow from the model rules. The models still differ in how the shortfall is recorded (A `partial`, C `failed`) and in Principal Exposure. Cannot be concluded: that the equality is an empirical finding, or anything about a USD shortage or a shortage in both currencies. The Success Rate of B did fall faster (0.5278 against 0.7727 at 0.0125), but that is exploratory and not part of the H4a rule.
+
+### 6.6 H4b (inconclusive)
+
+Observed: the active check passed (78 of 90 A rows). At 300 s the paired difference (change_A minus change_B of amount-based Principal Exposure) was positive in 8 seeds, negative in 1 and zero in 21 (mean 217,165.3537 USD); at 60 s it was positive in 1, negative in 2 and zero in 27 (mean -10,988.612 USD), labelled a reversal. Mixed signs at the highest stress give "inconclusive". Consistent reading: amount-based exposure ignores delay, so delay can act only through balances; methodology sec. 9 anticipated little or no difference. Cannot be concluded: whether delay changes the exposure gap between A and B. The duration-weighted exposure is descriptive, depends on W, and was not used for the verdict.
+
+### 6.7 Principal risk and liquidity need; prefunding and atomicity
+
+These distinctions must be kept in every use of this work.
+
+- Principal risk is the one-leg-only state: one leg completed and the other did not. In the models it is measured by Principal Exposure. Liquidity need is how much money must be available to settle. It is measured by Gross Prefunding and by the Peak Liquidity Proxy, and it shows up as insufficient funds. They are different quantities. In C, Principal Exposure is 0 in every cell by construction, yet C's Failure Rate is 0.2273 at multiplier 0.0125 (sec. 4.4). In this model, atomic PvP removes the one-leg-only state but not liquidity risk.
+- Prefunding and atomicity are different ideas. Prefunding means funds are set aside before settlement. Atomicity means both legs are committed together or not at all. A balance check or reservation alone does not make settlement atomic. B reserves funds, but under an injected failure it still records `partial` transactions (Partial Rate 0.009533, Principal Exposure 2,596,000 USD at baseline; sec. 3.1), just as A does. C validates both legs and commits once.
+- Gross Prefunding is not Peak Liquidity. At baseline, B's Gross Prefunding was 5.512e8 USD, while its Peak Liquidity Proxy was 4.221e7 USD (sec. 3.1). The proxy ignores netting and credit and counts reserved funds as unavailable, so it is a proxy and not a measure of real peak liquidity.
+
+## 7. Model limitations
+
+One list. It combines the README limitations, `methodology.md` sec. 9 to 11 and the limits noted in sec. 3 to 5. Findings hold only under the implemented models and assumptions.
+
+1. The models are simplified. They are not replicas of correspondent banking, tokenized bank deposits, CLS, RTGS systems or any other production system. Model A is an abstraction of time-gapped independent legs.
+2. The data are synthetic. Parameters (uniform sizes, random bank pairs, fixed rate 150.00, balances, failure probabilities) are illustrative and not calibrated to real markets, banks or failure rates. Failure is a single independent draw per transaction; real failures are correlated.
+3. Completion in the simulation is not legal settlement finality. Legal finality depends on legal and regulatory frameworks that this project does not model.
+4. Atomic PvP, as modelled in C, removes the one-leg-only state (principal risk in this model). It does not remove liquidity risk: C still fails when funds are short.
+5. The models have no netting, credit, intraday liquidity facilities, queues, multi-currency routing or market-price movement. Liquidity needs are therefore likely to differ from real arrangements, and Peak Liquidity Proxy is only a proxy.
+6. Liquidity stress lowers JPY only; USD stays at the reference. Nothing here speaks to a USD shortage or a shortage in both currencies. The second leg is JPY in every model, which also shapes which shortages can appear.
+7. The liquidity grid (JPY multipliers 1, 0.09375, 0.0625, 0.03125, 0.0125) was set by calibration and is coarse, especially between 1 and 0.09375. L\* and the H3 verdicts depend on the grid and on the 95% target.
+8. There are 30 seeds, reported as min to max ranges. The decision rules were fixed before the runs but are not statistical tests; the ranges are not confidence intervals.
+9. Several outcomes are guaranteed or nearly guaranteed by design and count as correctness checks, not evidence: Model C Partial Rate 0 and Principal Exposure 0; A and B identical Principal Exposure at ample liquidity; Average Settlement Time equal to the delay; the direction of H1b and of H2, which can be anticipated from the reservation rules (sec. 4.4), so those verdicts are not independent evidence; and, possibly, the A = C Success Rate equality (H4a) and the arrival verdicts for A and C (H3), which were not checked transaction by transaction.
+10. Duration-weighted exposure depends on the cut-off W (3,600 s) and is descriptive only. Amount-based exposure ignores delay directly.
+11. Liquidity is set per bank, so adding banks adds total liquidity. The banks factor is not a pure participant-number effect. Only 2 banks, one arrival pattern (plus burst in Exp2) and one seed set were used for most cells.
+12. Protocol deviations already recorded: (a) calibration attempt 1 did not meet its grid condition, and the grid was rebuilt to lower JPY only before any main run, with no change to the decision rules (sec. 1, 2; methodology sec. 11, Day 11); (b) a timing dry run on the main seeds 1 to 30 was made before the Exp1 run, its outputs deleted and its values not used, although the first lines of one file were seen (sec. 3.4); dry runs use test seeds only since then; (c) the Day 12 and Day 13 decisions on how rules are read in code were made before the runs, with the rule text unchanged (methodology sec. 11).
+13. No policy suggestion follows from these results alone. This is an independent research prototype, and no institution has reviewed or endorsed it.
+
+## 8. Figures
+
+Seven figures were generated on Day 14 from existing CSVs (no new run) by `python -m src.figures`. Each exists as an HTML file and a PNG in `results/figures/`; the list below follows `results/figures/figures_manifest.csv`. All use 30 seeds (1 to 30) and the same colours and order for A Sequential, B Prefunded Tokenized and C Atomic PvP.
+
+| Id | Files | What is plotted | Source CSV | Experiment and conditions | Relates to | Slide candidate |
+|---|---|---|---|---|---|---|
+| f1_baseline | `f1_baseline.html`, `.png` | Bars: duration-weighted Principal Exposure, Gross Prefunding (n/a for A) and Peak Liquidity Proxy, by model | `summary.csv`, `experiment_log.csv` | exp1_baseline, `baseline` | Exp1, descriptive (sec. 3) | yes |
+| f2_liquidity_stress | `f2_liquidity_stress.html`, `.png` | Three panels: Success Rate, Partial Rate, Failure Rate against JPY multiplier | `stress_test_results.csv`, `experiment_log.csv` | exp3_liquidity, `jpy_1` to `jpy_0.0125` | H4a, H1b (context) | yes |
+| f3_delay_failure | `f3_delay_failure.html`, `.png` | Failure sweep and delay sweep: amount-based and duration-weighted Principal Exposure, and Success Rate | `stress_test_results.csv`, `experiment_log.csv` | exp4_failure, exp4_delay: `failure_0`, `failure_0.01`, `failure_0.05`, `delay_0`, `delay_300` | H1a; the delay sweep is context for H4b | backup |
+| f4_h4b | `f4_h4b.html`, `.png` | Amount-based Principal Exposure against delay at JPY multiplier 0.09375, per model | `stress_test_results.csv`, `experiment_log.csv` | exp4_h4b: `h4b_delay_0`, `h4b_delay_60`, `h4b_delay_300` | H4b | backup |
+| f5_lstar | `f5_lstar.html`, `.png` | Number of seeds at each L\* value, per factor level and model (6 panels: baseline, volume 100, volume 1000, banks 5, banks 10, arrival burst) | `lstar_by_seed.csv`, `h3_verdicts.csv`, `stress_test_results.csv`, `experiment_log.csv` | exp2_x_exp3, factor levels as in `lstar_by_seed.csv` | H3 | backup |
+| f6_exposure_liquidity | `f6_exposure_liquidity.html`, `.png` | Amount-based Principal Exposure against JPY multiplier, per model | `stress_test_results.csv`, `experiment_log.csv` | exp3_liquidity, `jpy_1` to `jpy_0.0125` | H1b | yes |
+| f7_proxy_delay | `f7_proxy_delay.html`, `.png` | Peak Liquidity Proxy against delay (0, 60, 300 s) at ample liquidity, per model | `stress_test_results.csv`, `experiment_log.csv` | exp4_delay, exp4_failure: `delay_0`, `delay_300`, `failure_0.01` | H2 | yes |
+
+Reading the figures. Whiskers and error bars are the min to max across the 30 seeds; they are not confidence intervals. In f2 and f6 the x axis is categorical and evenly spaced although the multipliers are not. In f3 and f7 the 60 s point of the delay sweep is the shared `failure_0.01` cell. In f1 and f3 the duration-weighted exposure depends on W (sec. 3.3) and is not a measured duration. In f5 the multiplier 0.0125 is not drawn because no seed had it as L\*, and banks 2 and volume 500 are the baseline panel. f7 plots the Peak Liquidity Proxy of each model, with ranges across seeds; it does not plot the H2 gap itself, which the rule computes as B minus A within each seed (`results/verdicts.csv`), so the wide ranges in f7 are not the spread of that gap. Every figure is labelled synthetic data, own model, independent research prototype. The figures are regenerated with `python -m src.figures`.
+
+Code version. The `figure_code_commit` column of the manifest is the commit of the figure code at generation time, with `-dirty` appended if the working tree had uncommitted changes. A value ending in `-dirty` means the figures came from uncommitted code and should not be treated as final. Note (Day 14, to be removed after regeneration): the current manifest value ends in `-dirty`, because the figures were generated before the figure code was committed; they will be regenerated from a clean commit.

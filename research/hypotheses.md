@@ -2,7 +2,7 @@
 
 Hypotheses are things to test, not conclusions. Each result is recorded as supported / not supported / inconclusive.
 
-Status: Day 4 draft, 2026-11-02; Day 11 note added, 2026-11-10 (sec. 2 only); Day 12 status update, 2026-11-10; Day 13 status update, 2026-11-11 (this line only). The Exp1 baseline was run on Day 11 (descriptive only; `findings.md` sec. 3). The main runs of Exp3 and Exp4 were done on Day 12 and their verdicts are recorded in `findings.md` sec. 4. The Exp2 x Exp3 main run was done on Day 13 and the H3 verdicts are recorded in `findings.md` sec. 5. The decision rules below are fixed before any experiment and were not changed on Day 11, Day 12 or Day 13.
+Status: Day 4 draft, 2026-11-02; Day 11 note added, 2026-11-10 (sec. 2 only); Day 12 status update, 2026-11-10; Day 13 status update, 2026-11-11; Day 14 status update, 2026-11-12 (this line only). On Day 14 figures were generated from the existing CSVs and `findings.md` sec. 6 to 8 were added; no new runs. The Exp1 baseline was run on Day 11 (descriptive only; `findings.md` sec. 3). The main runs of Exp3 and Exp4 were done on Day 12 and their verdicts are recorded in `findings.md` sec. 4. The Exp2 x Exp3 main run was done on Day 13 and the H3 verdicts are recorded in `findings.md` sec. 5. The decision rules below are fixed before any experiment and were not changed on Day 11, Day 12 or Day 13.
 
 This is an independent research prototype on synthetic data. No institution (BIS, BoJ, CLS, OSFI or any other) has reviewed, approved or endorsed it. Source IDs refer to `sources.md`.
 
