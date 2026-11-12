@@ -372,3 +372,28 @@
   1. ダッシュボードの計画に「判定を表示するときは、設計由来かもしれないという注記を一緒に出す」を入れる（中 1 件への対応。`verdicts.csv` に列を足すか、表示側で注記するかはユーザーと決める）。
   2. `findings.md` 299 行目の言い回しを直す（`writer`、1 文）。
   3. そのほかの低は Week 3 の README 全面更新とスライド作成のときに対応する。
+
+## Day 15 — Streamlit ダッシュボード（ライブ実行・記録済み結果・前提と限界）
+- 新しい実験・判定の計算・図の作り直しはしていない。`results/` は変更なし（`experiment_log.csv` は 4,053 行のまま）。Week 2 ゲートは前日に実施済みなので再実行していない。
+- 決定（ユーザー、計画時）: 判定の「設計由来かもしれない」注記は**表示側**で出す（`verdicts.csv`・`h3_verdicts.csv` は変えない）。画面は 3 タブ（ライブ実行 / 記録済み結果 / 前提と限界）。
+- 完了（前日の残り）: `findings.md` sec. 4.4 の H1b の 1 文（"which measures how much this one mechanism matters"）を "may be read as an indication of…" に弱めた。`integrity-checker` の指摘で、同じ言い回しが残っていた sec. 6 の H1b の文も同じ強さにそろえた。数値は変えていない。計画では `writer` の担当だったが、1 文ずつなので Claude が直接直した。
+- 完了（コード、`sim-engineer`）:
+  - `src/live.py`（新規）: `LiveInputs`、`run_live`（シードごとに取引データを 1 回だけ作り、選んだ全モデルで共有。各 run は既存の `experiments.run_one` を呼ぶので、エンジン・指標・自己チェックは実験と同じ）、`summarize_live`、`summary_table`、`range_table`、`reason_table`、`build_live_figure`、`load_verdict_tables`（CSV を読むだけで判定は計算し直さない）、注記の定数。ライブ実行は何もファイルに書かない。
+  - `dashboard/app.py`（新規）: サイドバーの入力（USD/JPY、取引件数、銀行数、到着パターン、初期 USD / JPY の倍率、方式、失敗確率、遅延、シード）→ Run Simulation → 表と図。タブ 2 は `figures.build_all` の F1〜F7 と判定の表 + 注記。タブ 3 は前提と限界。
+  - テスト: `tests/test_live.py`、`tests/test_dashboard.py`（Streamlit の `AppTest`）。テスト用シードは 201 以降。
+  - 計画との違い: `range_table`・`reference_balances` を追加。`use_container_width` が Streamlit 1.66 で非推奨のため `width="stretch"` を使用。既存の `src/` のファイルは変えていない。
+- 検査（コード）: `reviewer` 1 回。
+  - 確認できたこと: 基準の入力・シード 1〜30 のライブ実行の要約は `results/summary.csv` の baseline 27 行と完全一致。エンジンを直接呼んだ再計算（3 条件、シード 201〜203）と画面の表が全セル一致。固定値・代用の値なし。最大の入力（30 シード・1000 件・10 銀行）で 1.35 秒。
+  - 高 1 件: テストの穴。銀行数・到着パターン・残高の倍率・遅延・FX の入力を無視するように壊しても、テストが 1 件も失敗しなかった（既定値でしかテストしていなかった）。画面の動作自体の誤りではない。既定値以外の条件のテストを足し、期待値は `src.live` を使わずエンジンを直接呼んで作るようにした。コピー上で 9 種類の改変をやり直し、すべて検知した（`sim-engineer` の報告）。
+  - 中 5 件: テストの期待値がアプリと同じ関数、「JPY だけを下げる」の文がライブ実行と食い違う、ValueError をすべて「モデルを選んでください」と表示、H4a の注記に範囲がない、H3 の銀行数の行に「銀行を増やすと全体の流動性も増える」の限定がない。すべて修正した。H3 の銀行数の注記は `findings.md` sec. 5.4 の言い回しに合わせた。
+  - 低 2 件はそのまま: 基準残高のキャッシュは `calibration.csv` の変更を検知しない（サーバーの再起動が必要）。シード数の既定は 5（記録済みの baseline と比べるには 30 に変える）。
+  - 修正後の `reviewer` の再レビューはしていない。
+- 検査（文言と数値）: `integrity-checker` 1 回（`reviewer` の指摘の修正後）。約 60 個を照合し、数値の不一致 0 件、高 0 件。中 1 件（H3 arrival の注記の文が、単独で読むと volume・banks にも当てはまるように読める → 文頭に "For the arrival comparison," を付けた）と低 4 件（"pre-registered" を "fixed before the main runs" に、findings sec. 6 の H1b の文、Model C の Gross prefunding の注記に「commit が失敗しても数える」を追記）を修正した。この最後の修正のあとの再検査はしていない。
+- 完了（README、Claude）: Status、Project overview の「Outputs so far」、Usage（`streamlit run dashboard/app.py` と 3 タブの説明）、Project status 表のダッシュボードの行。README の全面更新は Week 3 の残り。
+- pytest: 1411 passed（+49）/ 0 skipped。`scripts/precommit_check.sh` は問題なし。
+- 未完了 / 既知の制限:
+  - **ブラウザでの実際の表示は未確認**。`sim-engineer` はサーバーの応答（HTTP 200）まで、`reviewer` のヘッドレス Chrome のスクリーンショットは読み込み中の画面と真っ黒な画面しか撮れなかった。確認できているのは `AppTest`（画面の自動テスト）まで。ユーザーの目視確認が必要。
+  - F1〜F7 は 1600 px 幅の PNG 用に作った図なので、ダッシュボードの中での見え方（文字の重なりなど）は未確認。
+  - ライブ実行は探索用で、記録済みの実験ではない。判定は計算しない。
+  - 残りの低い指摘（Week 2 ゲート分）は README 全面更新とスライド作成のときに対応する。
+- 次の日（Day 16）: Research Report（6〜8 ページ、`writer`）。数値は `results/` の CSV から取り、`findings.md` の限定を一緒に写す。
