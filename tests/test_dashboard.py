@@ -2,13 +2,14 @@
 
 import dataclasses
 import math
+from html import escape
 from pathlib import Path
 
 import pandas as pd
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from src import live, metrics, simulator, transactions
+from src import experiments, live, metrics, simulator, transactions
 from src.figures import MODEL_NAMES
 
 APP_FILE = str(Path(__file__).resolve().parent.parent / "dashboard" / "app.py")
@@ -23,7 +24,7 @@ def small_run(app: AppTest, failure_pct: int = 1) -> AppTest:
     """Set small inputs (volume 100, seeds 201-202) and press Run Simulation."""
     app.number_input(key="first_seed").set_value(201)
     app.slider(key="n_seeds").set_value(2)
-    app.slider(key="count").set_value(100)
+    app.number_input(key="count").set_value(100)
     app.slider(key="failure_pct").set_value(failure_pct)
     app.button(key="run").click()
     return app.run()
@@ -58,8 +59,12 @@ def test_run_shows_summary_equal_to_the_engine() -> None:
     atomic_mean = runs[runs["model"] == "atomic"]["success_rate"].mean()
     shown_value = shown.loc[shown["Metric"] == "Success rate", MODEL_NAMES["atomic"]].iloc[0]
     assert shown_value == atomic_mean
+    markdown = texts(app.markdown)
     for note in live.LIVE_NOTES:
-        assert any(note == c.value for c in app.caption)
+        assert escape(note) in markdown
+    # The comparison at the top shows the same mean, formatted (display only).
+    assert f"<td>{live.format_value('success_rate', atomic_mean)}</td>" in markdown
+    assert "Outcome mix" in markdown
 
 
 def test_changed_inputs_warn_and_rerun_updates_results() -> None:
@@ -133,7 +138,7 @@ def test_every_input_reaches_the_engine() -> None:
             "delay": 30.0, "usd": 50_000_000, "jpy": 3_750_000_000}  # fmt: skip
     app = new_app()
     app.number_input(key="fx_rate").set_value(120.0)
-    app.slider(key="count").set_value(300)
+    app.number_input(key="count").set_value(300)
     app.slider(key="n_banks").set_value(4)
     app.selectbox(key="arrival").set_value("burst")
     app.number_input(key="usd_mult").set_value(0.5)
@@ -155,15 +160,17 @@ def test_every_input_reaches_the_engine() -> None:
         for model, name in MODEL_NAMES.items():
             want, got = expected[model][metric], shown.loc[label, name]
             assert got == pytest.approx(want, rel=1e-9, abs=1e-9) or (math.isnan(want) and math.isnan(got))
-    caption = " ".join(c.value for c in app.caption)
-    assert "4 banks" in caption and "burst" in caption and "seeds 201-202" in caption
+    conditions = texts(app.markdown)
+    assert "4 banks, burst arrival" in conditions and "<dd>201-202 (2 seeds)</dd>" in conditions
+    assert "<dd>120</dd>" in conditions and "<dd>50,000,000</dd>" in conditions
+    assert "<dd>3,750,000,000</dd>" in conditions and "<dd>30 s</dd>" in conditions and "<dd>5%</dd>" in conditions
 
 
 def run_and_compare(set_inputs: dict[str, object], case: dict[str, object]) -> dict[str, dict[str, float]]:
     """Set widgets, run, compare the Success rate and Peak liquidity cells with an independent calculation."""
     app = new_app()
     for key, value in set_inputs.items():
-        widget = app.number_input if key in ("fx_rate", "usd_mult", "jpy_mult", "first_seed") else app.slider
+        widget = app.number_input if key in ("fx_rate", "usd_mult", "jpy_mult", "first_seed", "count") else app.slider
         widget(key=key).set_value(value)
     app.number_input(key="first_seed").set_value(201)
     app.slider(key="n_seeds").set_value(2)
@@ -201,3 +208,67 @@ def test_empty_model_selection_message_is_specific() -> None:
     app.button(key="run").click()
     app.run()
     assert [e.value for e in app.error] == ["Select at least one settlement model."]
+
+
+# ------------------------------------------------------------------ scenario buttons
+
+
+def widget_values(app: AppTest) -> dict[str, object]:
+    """Current value of every sidebar input."""
+    return {
+        "fx_rate": app.number_input(key="fx_rate").value, "count": app.number_input(key="count").value,
+        "usd_mult": app.number_input(key="usd_mult").value, "jpy_mult": app.number_input(key="jpy_mult").value,
+        "failure_pct": app.slider(key="failure_pct").value, "delay": app.slider(key="delay").value,
+        "n_banks": app.slider(key="n_banks").value, "arrival": app.selectbox(key="arrival").value,
+        "first_seed": app.number_input(key="first_seed").value, "n_seeds": app.slider(key="n_seeds").value,
+        "models": app.multiselect(key="models").value,
+    }  # fmt: skip
+
+
+def scenario_button(app: AppTest, label: str) -> object:
+    """The scenario button with this label."""
+    return next(b for b in app.button if b.label == label)
+
+
+def test_scenarios_change_one_input_using_recorded_levels() -> None:
+    levels = experiments.read_stress_levels(experiments.RESULTS_DIR / experiments.CALIBRATION_FILE)
+    app = new_app()
+    baseline = widget_values(app)
+    assert baseline["fx_rate"] == experiments.FX_RATE and baseline["count"] == experiments.COUNT
+    assert baseline["delay"] == experiments.DELAY_SECONDS and baseline["failure_pct"] == 1
+    assert baseline["usd_mult"] == 1.0 and baseline["jpy_mult"] == 1.0
+    expected = {
+        "JPY shortage": {"jpy_mult": levels.lower_multipliers[1]},
+        "High failure": {"failure_pct": 5},
+        "Long delay": {"delay": 300},
+    }
+    assert expected["JPY shortage"]["jpy_mult"] in levels.lower_multipliers
+    assert 0.05 in experiments.EXP4_FAILURE_LEVELS and 300 in experiments.EXP4_DELAY_LEVELS
+    for label, change in expected.items():
+        scenario_button(app, label).click()
+        app.run()
+        assert not app.exception
+        assert widget_values(app) == {**baseline, **change}  # one change, everything else back to baseline
+        assert "runs" not in app.session_state  # a scenario does not run the engine by itself
+    scenario_button(app, "Baseline").click()
+    app.run()
+    assert widget_values(app) == baseline
+
+
+def test_scenario_then_run_uses_the_scenario_inputs() -> None:
+    app = new_app()
+    scenario_button(app, "JPY shortage").click()
+    app.run()
+    app.number_input(key="first_seed").set_value(201)
+    app.slider(key="n_seeds").set_value(2)
+    app.button(key="run").click()
+    app.run()
+    assert not app.exception and not app.error
+    case = {"count": 500, "fx_rate": 150.0, "n_banks": 2, "arrival": "sequential", "failure": 0.01,
+            "delay": 60.0, "usd": 100_000_000, "jpy": 937_500_000}  # fmt: skip
+    expected = independent_means(case, [201, 202])
+    shown = app.dataframe[0].value.set_index("Metric")
+    for model, name in MODEL_NAMES.items():
+        assert shown.loc["Partial rate", name] == pytest.approx(expected[model]["partial_rate"], abs=1e-12)
+    assert expected["sequential"]["partial_rate"] > expected["atomic"]["partial_rate"]
+    assert "<dd>937,500,000</dd>" in texts(app.markdown)

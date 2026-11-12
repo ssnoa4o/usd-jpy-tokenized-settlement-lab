@@ -21,7 +21,7 @@ from src.experiments import (
     ARRIVAL, CALIBRATION_FILE, COUNT, DELAY_SECONDS, FX_RATE, N_BANKS, RESULTS_DIR,
     ExpCondition,
 )
-from src.figures import MODEL_COLORS, MODEL_NAMES, MODEL_ORDER, SYNTHETIC_NOTE
+from src.figures import MODEL_COLORS, MODEL_NAMES, MODEL_ORDER, MODEL_SHORT, SYNTHETIC_NOTE
 from src.simulator import Model
 
 LIVE_EXPERIMENT = "live_dashboard"
@@ -244,6 +244,51 @@ def range_table(summary: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+# How each metric is written on screen. Display only: the tables keep the exact numbers.
+METRIC_FORMATS = {
+    "success_rate": "{:.1%}",
+    "partial_rate": "{:.1%}",
+    "failure_rate": "{:.1%}",
+    "principal_exposure_usd": "{:,.0f}",
+    "principal_exposure_usd_seconds": "{:,.0f}",
+    "gross_prefunding_usd": "{:,.0f}",
+    "liquidity_utilization": "{:.1%}",
+    "peak_liquidity_proxy_usd": "{:,.0f}",
+    "average_settlement_time_seconds": "{:,.1f}",
+}
+NOT_AVAILABLE = "n/a"
+
+# Metrics of the comparison at the top of the live tab: (metric, column heading).
+HEADLINE_METRICS = (
+    ("success_rate", "Success rate"),
+    ("partial_rate", "Partial rate"),
+    ("failure_rate", "Failure rate"),
+    ("principal_exposure_usd", "Principal exposure (USD)"),
+    ("peak_liquidity_proxy_usd", "Peak liquidity proxy (USD)"),
+)
+
+
+def format_value(metric: str, value: float) -> str:
+    """One metric value as display text. NaN becomes 'n/a' (never 0)."""
+    if value is None or math.isnan(value):
+        return NOT_AVAILABLE
+    return METRIC_FORMATS[metric].format(value)
+
+
+def headline_rows(summary: pd.DataFrame) -> list[dict[str, object]]:
+    """One dict per model for the comparison at the top: mean values as numbers and as text."""
+    rows: list[dict[str, object]] = []
+    for name in MODEL_ORDER:
+        if name not in set(summary["model"]):
+            continue
+        values = {metric: _value(summary, name, metric, "mean") for metric, _ in HEADLINE_METRICS}
+        rows.append({
+            "model": name, "name": MODEL_NAMES[name], "color": MODEL_COLORS[name], "values": values,
+            "text": {metric: format_value(metric, value) for metric, value in values.items()},
+        })  # fmt: skip
+    return rows
+
+
 def reason_table(runs: pd.DataFrame) -> pd.DataFrame:
     """Counts by status and failure reason, summed over seeds. One row per model."""
     rows = []
@@ -288,8 +333,7 @@ def build_live_figure(summary: pd.DataFrame) -> go.Figure:
     n_seeds = int(summary["n_seeds"].max()) if len(summary) else 0
     fig = make_subplots(
         rows=1, cols=3, horizontal_spacing=0.09,
-        subplot_titles=("Settlement outcome rates (mean)", "Principal exposure, USD (mean, min-max)",
-                        "Peak liquidity proxy, USD (mean, min-max)"),
+        subplot_titles=("Settlement outcome rates", "Principal exposure (USD)", "Peak liquidity proxy (USD)"),
     )  # fmt: skip
     outcomes = (("success_rate", "Success"), ("partial_rate", "Partial"), ("failure_rate", "Failure"))
     for name in models:
@@ -304,11 +348,12 @@ def build_live_figure(summary: pd.DataFrame) -> go.Figure:
             error = None if below is None else {"type": "data", "symmetric": False,
                                                 "array": [above], "arrayminus": [below]}  # fmt: skip
             fig.add_trace(go.Bar(
-                x=[MODEL_NAMES[name]], y=[_none_if_nan(_value(summary, name, metric, "mean"))],
+                x=[MODEL_SHORT[name]], y=[_none_if_nan(_value(summary, name, metric, "mean"))],
                 marker_color=MODEL_COLORS[name], name=MODEL_NAMES[name], legendgroup=name,
                 showlegend=False, error_y=error,
             ), row=1, col=col)  # fmt: skip
     fig.update_yaxes(range=[0, 1], tickformat=".0%", row=1, col=1)
+    fig.update_xaxes(tickangle=0)
     fig.update_layout(
         title=f"Live exploratory run ({n_seeds} seeds). {SYNTHETIC_NOTE}",
         barmode="group", height=480, template="plotly_white",

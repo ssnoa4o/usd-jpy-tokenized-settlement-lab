@@ -1,0 +1,8 @@
+# Dashboard theme. Dark, as used in the live demo. No fonts are downloaded:
+# the font names below are system fonts, so the app also works offline.
+[theme]
+base = "dark"
+textColor = "#E8ECF2"
+primaryColor = "#7C8CF8"
+font = "'Avenir Next', 'Helvetica Neue', 'Segoe UI', sans-serif"
+

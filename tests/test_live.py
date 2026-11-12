@@ -390,3 +390,48 @@ def test_missing_verdict_files_raise_value_error(tmp_path: Path) -> None:
     (tmp_path / "verdicts.csv").write_text("hypothesis,role\nH1a,overall\n")
     with pytest.raises(ValueError, match="column"):
         live.load_verdict_tables(tmp_path)
+
+
+# ------------------------------------------------------------------ display formats
+
+
+@pytest.mark.parametrize(
+    ("metric", "value", "text"),
+    [
+        ("success_rate", 0.9895, "99.0%"),
+        ("partial_rate", 0.0, "0.0%"),
+        ("principal_exposure_usd", 2596140.8, "2,596,141"),
+        ("peak_liquidity_proxy_usd", 0.0, "0"),
+        ("average_settlement_time_seconds", 60.0, "60.0"),
+        ("liquidity_utilization", 0.5, "50.0%"),
+        ("gross_prefunding_usd", float("nan"), "n/a"),
+    ],
+)
+def test_format_value(metric: str, value: float, text: str) -> None:
+    assert live.format_value(metric, value) == text
+
+
+def test_every_summary_metric_has_a_format() -> None:
+    assert set(live.METRIC_FORMATS) == {metric for metric, _ in live.METRIC_LABELS}
+    assert {metric for metric, _ in live.HEADLINE_METRICS} <= set(live.METRIC_FORMATS)
+
+
+def test_headline_rows_equal_summary_means() -> None:
+    summary = live.summarize_live(live.run_live(make_inputs(models=("atomic", "sequential"))))
+    rows = live.headline_rows(summary)
+    assert [row["model"] for row in rows] == ["sequential", "atomic"]
+    for row in rows:
+        assert row["name"] == MODEL_NAMES[row["model"]]
+        for metric, _ in live.HEADLINE_METRICS:
+            cell = summary[(summary["model"] == row["model"]) & (summary["metric"] == metric)].iloc[0]
+            assert row["values"][metric] == cell["mean"]
+            assert row["text"][metric] == live.format_value(metric, cell["mean"])
+
+
+def test_headline_nan_is_not_shown_as_zero() -> None:
+    summary = pd.DataFrame(
+        [{"model": "sequential", "metric": metric, "n_seeds": 1, "n_valid": 0, "mean": float("nan"),
+          "min": float("nan"), "max": float("nan")} for metric, _ in live.METRIC_LABELS]
+    )  # fmt: skip
+    row = live.headline_rows(summary)[0]
+    assert set(row["text"].values()) == {"n/a"}

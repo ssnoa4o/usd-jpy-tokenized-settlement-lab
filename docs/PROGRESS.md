@@ -396,4 +396,22 @@
   - F1〜F7 は 1600 px 幅の PNG 用に作った図なので、ダッシュボードの中での見え方（文字の重なりなど）は未確認。
   - ライブ実行は探索用で、記録済みの実験ではない。判定は計算しない。
   - 残りの低い指摘（Week 2 ゲート分）は README 全面更新とスライド作成のときに対応する。
+- 追加（同日、ユーザーの確認と依頼）:
+  - ユーザーがブラウザで確認した。起動、Run Simulation、失敗確率 5%、JPY 倍率 0.0625、Recorded results、Assumptions & limits はすべて想定どおり。これで「ブラウザでの実際の表示は未確認」は解消。commit `4b0669d`（ユーザー承認）。
+  - ユーザーの依頼: 右側の結果エリアが詰まっていて読みにくいので、機能・計算・左の入力欄・ダークテーマは変えずに、見た目の階層と読みやすさを直す。
+  - 対応（Claude、`frontend-design` スキルを使用。新しい依存なし）:
+    - `.streamlit/config.toml`（新規）: ダークテーマを固定、文字色、本文フォント（Mac に入っている Avenir Next。ダウンロードなし）。サイドバーのフォントは標準のまま。
+    - `dashboard/app.py`: 結果エリア用の CSS（見出しの下線、キャプションの文字色を明るく、数字は等幅の数字）。「Run conditions」を長い 1 文からラベルと値の格子に変更。「Comparison at a glance」（モデルごとの主要 5 指標と settled / partial / failed の内訳バー）を追加。全指標の表は行ごとに書式を付けた（率は %、USD は桁区切りで小数なし、時間は小数 1 桁。表の中の値は元の数値のまま）。状態・失敗理由の表は横に切れていたので、行と列を入れ替えた。注記は灰色のキャプション 5 行から「How to read these numbers」の箇条書きに変更。判定の表に列の見出しと幅を設定。
+    - `src/live.py`: 表示用の `METRIC_FORMATS`・`format_value`・`HEADLINE_METRICS`・`headline_rows` を追加。図は x 軸のラベルを A / B / C にして斜めの文字をなくし、パネルの題を短くした。計算は変えていない。
+    - 指標・表・図・注記は 1 つも削っていない。
+  - 確認: Claude がヘッドレス Chrome（kaleido に付属の choreographer で操作）でスクリーンショットを撮り、Live simulation（実行後）と Recorded results の表示を目で確認した。見つけた問題（キャプションの色が変わっていない、状態の表が横に切れる、図のラベルが斜め）を直して撮り直した。最後の小さな変更（図のパネルの題を短くした、図の下に説明を 1 行足した）のあとは撮り直していない。
+  - 既知の制限: 全指標の表で、定義されない値（Model A の Gross prefunding など）は "None" と表示される（Streamlit の表の仕様。0 ではないことを見出しの下に明記）。
+  - 入力欄（左のサイドバー）も作り直した（ユーザーの指摘「左が何も変わっていない」を受けて。貼り付けの依頼文には「左は変えない」とあったが、もとの要望は入力欄の使いにくさだった）。
+    - Run Simulation ボタンを一番上に移動。
+    - Scenario ボタン 4 つ（Baseline / JPY shortage / High failure / Long delay）を追加。押すと全入力を baseline に戻し、1 項目だけ変える。値は記録済みの実験の水準から読む（JPY は `calibration.csv` の格子の 2 番目 = 0.0625、失敗確率は `EXP4_FAILURE_LEVELS` の最大 = 5%、遅延は `EXP4_DELAY_LEVELS` の最大 = 300 s）。押しただけではエンジンは動かない（Run Simulation が必要）。
+    - 入力を Market / Liquidity per bank / Stress / Settlement models に分け、銀行数・到着パターン・シードは「Advanced」にたたんだ。取引件数はスライダーから数値入力に変えた（範囲 100〜1000 は同じ）。
+    - テーマの強調色を Streamlit 標準の赤から `#7C8CF8` に変えた（`.streamlit/config.toml`）。
+    - 入力の種類・範囲・既定値・エンジンへの渡し方は変えていない。Scenario のテストを 2 件追加（値が記録済みの水準と一致、1 項目だけ変わる、押しただけでは実行されない、Scenario → Run の結果がエンジンの直接呼び出しと一致）。
+    - Claude がスクリーンショットで入力欄と結果エリアを確認した（そのあとの小さな文言変更 3 か所は撮り直していない）。
+  - この見た目の変更について `reviewer`・`integrity-checker` の検査はしていない。pytest は 1423 passed。
 - 次の日（Day 16）: Research Report（6〜8 ページ、`writer`）。数値は `results/` の CSV から取り、`findings.md` の限定を一緒に写す。
