@@ -321,9 +321,15 @@
 - commit `e4b322b`（コードと文書、ユーザー承認）。そのあと clean な状態で `python -m src.figures --force` を実行して図を作り直した（manifest の `figure_code_commit` は `e4b322b`）。作り直した HTML 7 枚は、commit 前の版と図の中身が同一であることを確認した。`slide_candidate` は元の値を入れ直した。findings sec. 8 の仮の注記は消した。
 - pytest: 1362 passed（+47）。`scripts/precommit_check.sh` は問題なし。
 - 未完了 / 既知の制限:
-  - README の「Planned outputs」「(planned)」という古い言い方（13・46・47・49 行目）は直していない。README の全面更新は Week 3（`writer`）。
+  - README の全面更新は Week 3（`writer`）。
   - f3 は 6 パネルで細かい。スライドに使うなら分割が必要（今は backup）。
-  - HTML をブラウザでオフラインで開く確認はユーザーの手元で行う。
   - f7 はモデルごとの値を描く。H2 の判定に使うシードごとの差（B − A）は描いていない（`verdicts.csv` にある）。
   - Week 2 ゲート（`/gate 2`）は未実施。
+- 追加の確認（同日、ユーザーの依頼「まだ確かめていないことを確認し、push」）:
+  - HTML のオフライン表示: ネットワークを遮断したヘッドレス Chrome で f6 を開き、図が描かれることを画像で確認した。`plotly.min.js` のないフォルダでは白紙になることも確認した（対照）。
+  - `reviewer` の再レビュー（f6・f7、中 3 件の修正、上書き防止、公開物）: push を止める問題なし。高 0 件。中 1 件（README が「`--force` で `plotly.min.js` を作り直す」と書いていたが、実際は無いときだけ作る）を README と `.gitignore` のコメントで修正。低 2 件（f6 の JPY-only 注記のテスト、`slide_candidate` を行の位置で引き継いでも通るテスト）を修正し、後者はコピー上でわざと壊してテストが失敗することを確認した。`src/figures.py` は変えていない（manifest の `figure_code_commit` `e4b322b` は有効のまま）。
+  - 直していない低: 壊れた manifest を読むと traceback になる、`--force` のたびに HTML の内部 ID が変わる、上書き防止のメッセージが長い。
+  - README の「Planned outputs」「(planned)」の古い言い方 4 か所を修正した。
+  - `integrity-checker` の最終検査（push 前、公開される差分すべて）: 数値の不一致 0 件、高・中 0 件。低 3 件（この記録の古い 1 文、README の FX rate が固定であることの注記、`plotly.min.js` と `--force` の説明）を修正した。この最後の 3 件の修正のあとの再検査はしていない。
+  - そのあと `origin/main` に push した。
 - 次の日（Day 15）: Streamlit ダッシュボード（`dashboard/app.py`）。実際のエンジンを呼び、`src/figures.py` の図の関数を再利用する。その前に `/gate 2` で Week 2 のゲートを確認する。

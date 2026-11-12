@@ -295,7 +295,7 @@ def test_required_label_text():
     assert "proxy" in text_of(figs["f1"]).lower()
     assert "USD·s" in text_of(figs["f1"])
     assert "n = 3 seeds (seeds 1-3)" in text_of(figs["f1"])
-    for name in ["f2", "f4", "f5"]:
+    for name in ["f2", "f4", "f5", "f6"]:
         assert "JPY-only" in text_of(figs[name]), name
     assert "Share of transactions" in text_of(figs["f2"])
     assert "seconds" in text_of(figs["f4"])
@@ -567,6 +567,8 @@ def test_force_keeps_slide_candidate_values(tmp_path):
     manifest = pd.read_csv(path, dtype=str, keep_default_na=False)
     manifest.loc[manifest["figure_id"] == "f2_liquidity_stress", "slide_candidate"] = "yes, slide 5"
     manifest.loc[manifest["figure_id"] == "f5_lstar", "slide_candidate"] = "backup"
+    # Reverse the row order: values must follow figure_id, not row position.
+    manifest = manifest.iloc[::-1]
     manifest.to_csv(path, index=False)
     run_main(tmp_path, force=True)
     again = pd.read_csv(path, dtype=str, keep_default_na=False).set_index("figure_id")

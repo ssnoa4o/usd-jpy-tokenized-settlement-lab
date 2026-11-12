@@ -39,7 +39,7 @@ results/**/*.tmp
 results/**/*.log
 
 # Plotly library copied next to the HTML figures by `python -m src.figures`
-# (third-party file, regenerated on every run; not published)
+# (third-party file, created by the run when missing; not published)
 results/figures/plotly.min.js
 
 # Editors, OS and local-only files
