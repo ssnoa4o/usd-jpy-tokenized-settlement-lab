@@ -1,0 +1,11 @@
+hypothesis,factor,model,low_level,high_level,role,verdict,censored,n_seeds,low_min,low_max,high_min,high_max,n_seeds_equal,note,git_commit,seeds
+H3,volume,sequential,100,1000,decides,inconclusive,False,30,0.03125,1,0.0625,1,10,"ranges overlap or touch, and L* differs in some seed",542043b2e4e4d8d2394bb6eb0167af4772ffe79b,1-30
+H3,volume,prefunded,100,1000,decides,inconclusive,False,30,0.0625,1,0.0625,1,13,"ranges overlap or touch, and L* differs in some seed",542043b2e4e4d8d2394bb6eb0167af4772ffe79b,1-30
+H3,volume,atomic,100,1000,decides,inconclusive,False,30,0.03125,1,0.0625,1,10,"ranges overlap or touch, and L* differs in some seed",542043b2e4e4d8d2394bb6eb0167af4772ffe79b,1-30
+H3,banks,sequential,2,10,decides,inconclusive,False,30,0.03125,1,0.0625,1,16,"ranges overlap or touch, and L* differs in some seed",542043b2e4e4d8d2394bb6eb0167af4772ffe79b,1-30
+H3,banks,prefunded,2,10,decides,inconclusive,False,30,0.0625,1,0.0625,1,11,"ranges overlap or touch, and L* differs in some seed",542043b2e4e4d8d2394bb6eb0167af4772ffe79b,1-30
+H3,banks,atomic,2,10,decides,inconclusive,False,30,0.03125,1,0.0625,1,16,"ranges overlap or touch, and L* differs in some seed",542043b2e4e4d8d2394bb6eb0167af4772ffe79b,1-30
+H3,arrival,sequential,sequential,burst,decides,not supported,False,30,0.03125,1,0.03125,1,30,L* identical in every seed at both levels,542043b2e4e4d8d2394bb6eb0167af4772ffe79b,1-30
+H3,arrival,prefunded,sequential,burst,decides,inconclusive,False,30,0.0625,1,0.0625,1,22,"ranges overlap or touch, and L* differs in some seed",542043b2e4e4d8d2394bb6eb0167af4772ffe79b,1-30
+H3,arrival,atomic,sequential,burst,decides,not supported,False,30,0.03125,1,0.03125,1,30,L* identical in every seed at both levels,542043b2e4e4d8d2394bb6eb0167af4772ffe79b,1-30
+input_check,,,,,active_check,,,,,,,,,seeds are exactly 1-30,542043b2e4e4d8d2394bb6eb0167af4772ffe79b,1-30

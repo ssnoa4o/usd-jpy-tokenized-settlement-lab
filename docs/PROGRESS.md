@@ -282,3 +282,24 @@
   - `experiment_log.csv` は `--force` でも追記する（変更なし）。
   - B の成功率が低い JPY と 300 s で下がる点は探索的な記述のみ。判定には使っていない。
 - 次の日（Day 13）: Exp2（件数 100/500/1000、銀行 2/5/10、到着 sequential/burst）× Exp3 の格子で L* を出し、H3 を判定する。判定コードは今日と同じく本番の前に commit する。`sensitivity_results.csv` を作る。複数シードのばらつきを確認する。
+
+## Day 13 — Exp2 × Exp3（感度分析）と H3 の判定
+- 決定（Claude、計画で提示しユーザー承認）: H3 のルールをコードでどう読むか（L\* の整数判定、打ち切り、範囲の重なり、シード番号ごとの一致、9 判定、ample 違反での保留、出力ファイル）を、本番の前に methodology sec. 11「Decided on Day 13」に書いた。hypotheses.md の本文は変えていない。資金量（Exp3）と失敗確率（Exp4）の感度は Day 12 の `stress_test_results.csv` を使い、今日は再実行しない。
+- 完了（コード、commit `542043b`、`sim-engineer`）:
+  - `src/experiments.py` に `sensitivity`（`python -m src.experiments sensitivity`）。6 セル（baseline、件数 100・1000、銀行 5・10、burst）× JPY 格子 5 × 3 モデル × 30 シード = 2,700 回。取引データは (シード, セル) ごとに 1 回作って共有。ample は格子 1 のみ。baseline セルを Exp3 と照合（`cross_check_baseline`）。`run_one` に `arrival` 引数（既定値は従来どおり）。
+  - `src/verdicts.py` に `lstar`（整数で 95%）、`lstar_table`、`range_verdict`、`h3_rows`、`python -m src.verdicts h3`（`lstar_by_seed.csv`、`h3_verdicts.csv`）。Day 12 の `python -m src.verdicts` は変えていない。
+  - テスト 55 件追加。
+- 検査: `reviewer` 2 回。1 回目は高 0 件・中 2 件（セルが欠けると黙って inconclusive、照合がシードの一部だけでも OK）・低 4 件。中 2 件と低 3 件（`--force` で古い H3 出力の警告、`n_total <= 0` でエラー、並び順のテスト）を修正し、低 1 件（保留時も L\* の範囲を残す）はそのまま。2 回目は高・中 0 件。わざと壊す確認は、リポジトリのコピー（scratchpad）で 11 種類を試し、すべてテストが検知した。
+- 実行（2026-11-12 00:52 UTC = 2026-11-11 現地、commit `542043b`）: 2,700 回、約 20 秒。ample 違反なし。baseline セルは Exp3 と 450 行・35 列で完全一致（実行時と、実行後に CSV から再確認）。`experiment_log.csv` に 2,700 行を追記。
+- 判定（`h3_verdicts.csv` のとおり）: supported 0、not supported 2（arrival の A と C。全 30 シードで L\* が同じ）、inconclusive 7。打ち切りは 0 件（L\* の最小は 0.03125、not reached なし）。まとめた H3 判定は作らない。
+  - 記述: どのセルでも A と C の L\* の分布は同じ。一部のシードで L\* = 1（0.09375 で 95% に届かない）で、9 行すべてで範囲の上端が 1。格子が粗い（1 と 0.09375 の間）ので「この格子での判定」と書いた。
+  - arrival の A / C の not supported は、モデルの規則から来ている可能性がある（確かめていない読み方）と注記した。
+- 完了（文書、`writer`）: findings.md sec. 5（5.1〜5.4）、Status 行（findings / methodology / hypotheses）、README。
+- 検査（文書）: `integrity-checker` 1 回。数値の不一致 0 件、高 0 件。中 2 件（arrival の not supported が設計由来かもしれない注記がない、commit と実行の順序・clean の根拠）と低 4 件をすべて修正した。修正後の再検査はしていない。
+- pytest: 1315 passed / 0 skipped。`scripts/precommit_check.sh` は問題なし。
+- 未完了 / 既知の制限:
+  - 1 と 0.09375 の間の細かい格子は実行していない（予定にない。結果を見たあとに格子を足すなら探索的な扱い）。
+  - Exp2 × Exp3 も JPY だけのストレス。
+  - `experiment_log.csv` は `--force` でも追記する（変更なし）。
+  - 文書の最後の修正のあと `integrity-checker` は再実行していない。
+- 次の日（Day 14）: Plotly で主要グラフ（`results/figures/`）、プレゼン用の図の選定、findings.md の初版。Week 2 ゲートの準備。

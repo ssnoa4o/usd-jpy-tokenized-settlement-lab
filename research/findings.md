@@ -1,6 +1,6 @@
 # Findings (draft)
 
-Status: Day 12, 2026-11-10. **The Exp1 baseline was run on Day 11 (descriptive only; sec. 3). The Exp3 and Exp4 main runs were done on Day 12 and the verdicts for H1b, H2, H4a and H4b computed by pre-committed code are recorded in sec. 4. H3 is not computed yet (it needs Exp2 combined with Exp3).** Exp2 has not been run. This file records outcomes in the order they happen. Hypotheses are recorded as supported / not supported / inconclusive only after the main runs, under the rules fixed in `hypotheses.md`.
+Status: Day 13, 2026-11-11. **The Exp1 baseline was run on Day 11 (descriptive only; sec. 3). The Exp3 and Exp4 main runs were done on Day 12 and the verdicts for H1b, H2, H4a and H4b computed by pre-committed code are recorded in sec. 4. The Exp2 x Exp3 main run was done on Day 13 and the nine H3 verdicts (0 supported, 2 not supported, 7 inconclusive), computed by code committed before the run, are recorded in sec. 5.** This file records outcomes in the order they happen. Hypotheses are recorded as supported / not supported / inconclusive only after the main runs, under the rules fixed in `hypotheses.md`.
 
 This is an independent research prototype on synthetic data. No institution (BIS, BoJ, CLS, OSFI or any other) has reviewed, approved or endorsed it.
 
@@ -290,10 +290,95 @@ These notes separate what the tables report from how it may be read. "Result" se
 **Exploratory and descriptive only (no verdict depends on it).** In the Success Rate table, B's mean falls faster than A's and C's at low JPY levels (0.5278 for B against 0.7727 for A and C at multiplier 0.0125) and at 300 s in the H4b cells (0.8883 for B against 0.9698). In B the shortfall appears mainly as `failed` (reservation not possible), not as `partial`. Proposed reading, not tested: B reserves the JPY leg at arrival, so JPY for in-flight transactions is unavailable to later arrivals, and a longer delay holds it longer. In the Exp3 low-JPY cells (multipliers 0.09375 to 0.0125) B's Peak Liquidity Proxy is also below A's and above C's (see the Peak Liquidity Proxy table), and its Gross Prefunding is below C's (for example 2.411e8 against 4.024e8 USD at multiplier 0.0125, from `stress_test_results.csv`), which may reflect fewer transactions passing reservation; this was not checked. This is a descriptive pattern in simplified models, not a test.
 
 **Other checks and limits of this section.**
-- H3 is not computed. It needs Exp2 combined with the Exp3 grid (planned for Day 13).
+- H3 was not computed on Day 12. It needs Exp2 combined with the Exp3 grid; it was run on Day 13 (sec. 5).
 - Several outcomes in the tables follow from the model rules and are correctness checks, not evidence: Model C has Partial Rate 0 and Principal Exposure 0 in every cell; A and B have identical Principal Exposure at ample liquidity; Average Settlement Time equals the delay in every model.
 - Under JPY-only stress the second leg is JPY in every model, so the shortages seen here are second-leg shortages (and, in B, reservation failures). The results do not describe a stress on USD or on both currencies.
 - The models are simplified, the data are synthetic, and 2 banks, one arrival pattern, one seed set and a coarse grid are used. The decision rules are not statistical tests (methodology sec. 9).
 - Smart-contract-style completion in the simulation is not legal settlement finality. Atomic PvP, as modelled in C, removes the one-leg-only state (principal risk in this model) but does not remove liquidity risk: C still fails when funds are short, as its Failure Rate shows (0.2273 at multiplier 0.0125).
 - Peak Liquidity Proxy is a proxy; Gross Prefunding is not Peak Liquidity.
 - No policy suggestion is drawn from these results alone. Any policy reading is deferred to `policy/policy_brief.md`, after all experiments, and must keep the limits above.
+
+## 5. Exp2 x Exp3 sensitivity and H3 (Day 13)
+
+### 5.1 Setup
+
+Main run of Exp2 x Exp3 (volume, banks and arrival pattern, each combined with the Exp3 JPY liquidity grid). Per-run records: `run_utc` 2026-11-12T00:52:00Z to 2026-11-12T00:52:19Z (UTC) in `results/sensitivity_run_metrics.csv` and `results/experiment_log.csv`; every one of the 2,700 rows has `git_commit` 542043b2e4e4d8d2394bb6eb0167af4772ffe79b (short form 542043b). That commit contains the verdict code and was made before the run (commit time 2026-11-12T00:51:55Z; first `run_utc` 00:52:00Z). The runner refuses to run on a tree with uncommitted changes unless `--allow-dirty` is given; the run was started without it, and `git status` was clean after the commit. (The run was on 2026-11-11 local time; the files record UTC.) Design: 6 cells (baseline, volume 100, volume 1000, banks 5, banks 10, burst arrival) x 5 JPY grid levels (1, 0.09375, 0.0625, 0.03125, 0.0125; USD at the reference) x 3 models x seeds 1 to 30 = 2,700 runs, delay 60 s, failure probability 1%. Only grid level 1 is an ample cell. No ample violation: no verdict was withheld under methodology sec. 6. The baseline cell of `results/sensitivity_run_metrics.csv` matches the Exp3 rows of `results/stress_run_metrics.csv` in all 450 rows (30 seeds x 3 models x 5 grid levels; 35 shared columns, excluding `git_commit`, `run_utc`, `experiment`, `condition`). The runner checked this before writing; it was rechecked from the two CSVs after the run on Day 13 (pandas merge on model, seed and JPY multiplier, exact match with NaN equal to NaN), and again by `integrity-checker`.
+
+How L\* and the verdicts are computed is fixed in `methodology.md` sec. 5 and sec. 11 ("Decided on Day 13"); the rule text in `hypotheses.md` H3 was not changed. In short: L\* is the lowest grid multiplier at which Success Rate >= 95% holds at that level and every higher level. The H3 range rule compares the L\* ranges (min to max over 30 seeds) at the low and high factor level. Supported if the ranges do not overlap (touching counts as overlapping); not supported if L\* is identical in every seed at both levels; inconclusive otherwise. A comparison is censored, and so inconclusive, if any seed has L\* at the lowest level (0.0125) or "not reached". Sources: `results/h3_verdicts.csv`, `results/lstar_by_seed.csv`, `results/sensitivity_results.csv`.
+
+### 5.2 H3 verdicts
+
+Copied from `results/h3_verdicts.csv` (9 verdicts: 3 factors x 3 models; all rows have `censored` = False, `n_seeds` = 30, seeds 1-30). L\* ranges are [min, max] over 30 seeds in JPY multiplier. "Seeds equal" is `n_seeds_equal`: the number of seeds (of 30) in which L\* is the same at the low and high factor level.
+
+| Factor | Model | Low level | High level | L\* range, low | L\* range, high | Seeds equal | Verdict |
+|---|---|---|---|---|---|---|---|
+| volume | A Sequential | 100 | 1000 | [0.03125, 1] | [0.0625, 1] | 10 | inconclusive |
+| volume | B Prefunded | 100 | 1000 | [0.0625, 1] | [0.0625, 1] | 13 | inconclusive |
+| volume | C Atomic PvP | 100 | 1000 | [0.03125, 1] | [0.0625, 1] | 10 | inconclusive |
+| banks | A Sequential | 2 | 10 | [0.03125, 1] | [0.0625, 1] | 16 | inconclusive |
+| banks | B Prefunded | 2 | 10 | [0.0625, 1] | [0.0625, 1] | 11 | inconclusive |
+| banks | C Atomic PvP | 2 | 10 | [0.03125, 1] | [0.0625, 1] | 16 | inconclusive |
+| arrival | A Sequential | sequential | burst | [0.03125, 1] | [0.03125, 1] | 30 | not supported |
+| arrival | B Prefunded | sequential | burst | [0.0625, 1] | [0.0625, 1] | 22 | inconclusive |
+| arrival | C Atomic PvP | sequential | burst | [0.03125, 1] | [0.03125, 1] | 30 | not supported |
+
+Result: 0 verdicts supported, 2 not supported, 7 inconclusive. In every inconclusive row the file's note is "ranges overlap or touch, and L\* differs in some seed". In both not-supported rows it is "L\* identical in every seed at both levels". There is no pooled H3 verdict, and no single factor or model result is used to stand for H3 as a whole. The verdicts are recorded as the code computed them; they are not softened or strengthened here.
+
+### 5.3 Reading notes
+
+"Result" sentences restate the files. "Reading" sentences are interpretation and are tentative.
+
+**No censoring.** Result: in `results/lstar_by_seed.csv` no seed has L\* = 0.0125, and `not_reached` and `censored_low` are False in every row. The lowest L\* seen is 0.03125. So no comparison was censored, and the inconclusive verdicts come from overlapping ranges, not from the edge of the grid.
+
+**L\* = 1 in some seeds.** Result: L\* = 1 means that in that seed Success Rate was below 95% at the 0.09375 level (the highest level is 1, so it is the only level that qualifies). The number of seeds (of 30) with L\* = 1, counted from `results/lstar_by_seed.csv`:
+
+| Cell | A Sequential | B Prefunded | C Atomic PvP |
+|---|---|---|---|
+| baseline (500 transactions, 2 banks, sequential) | 5 | 6 | 5 |
+| volume 100 | 1 | 4 | 1 |
+| volume 1000 | 3 | 3 | 3 |
+| banks 5 (exploratory) | 5 | 6 | 5 |
+| banks 10 | 1 | 1 | 1 |
+| burst arrival | 5 | 7 | 5 |
+
+Reading: the grid is coarse. There is a large gap between 1 and 0.09375, and a seed's L\* jumps to 1 when the 0.09375 level falls just short of 95%. The range top of 1 at both levels in every row of the verdict table is therefore partly an effect of this grid. Each verdict is a verdict on this grid (methodology sec. 9: grid choices and the 95% target can change L\*), not a statement about the underlying liquidity need. A finer grid between 1 and 0.09375 was not run.
+
+**Arrival.** Result: for A and C, L\* is identical at sequential and burst arrival in all 30 seeds, so the rule gives "not supported". For B, L\* is equal in 22 of 30 seeds, the ranges overlap, and the verdict is inconclusive. Reading (unverified): burst arrival changes only the arrival times of the transactions. In A and C, a possible reason for no change is that the order of payments within each currency is unchanged, so the balances behave the same. B reserves funds at arrival, so a change in arrival times could matter there. This was not checked transaction by transaction. If this reading is right, the "not supported" verdicts for A and C on arrival may follow largely from the model rules rather than being independent evidence about arrival patterns; they are recorded as the rule gives them, with this caveat.
+
+**Volume and banks.** Result: both factors give inconclusive verdicts for all three models. Reading: with ranges that overlap and L\* equal in only 10 to 16 seeds (11 to 13 for B), these runs do not show whether volume or the number of banks changes L\* on this grid. Liquidity is set per bank, so adding banks also adds total liquidity (by design, methodology sec. 4 and 9); the banks factor is not a pure participant-number effect.
+
+**Limits of this H3 result.**
+- The stress lowers JPY only, with USD at the reference. L\* describes sensitivity to JPY liquidity and may not carry over to a stress on USD or on both currencies (methodology sec. 9).
+- The decision rules are range rules on 30 seeds, not statistical tests.
+- Some verdicts may be partly driven by the model rules (for example, the arrival verdicts for A and C, see above); this was not verified.
+- The models are simplified and the data are synthetic. Smart-contract-style completion in the simulation is not legal settlement finality.
+- L\* is based on Success Rate. Atomic PvP, as modelled in C, removes the one-leg-only state (principal risk in this model) but does not remove liquidity risk; C still fails when funds are short, as its Failure Rate under stress shows (sec. 4.2).
+- No policy suggestion is drawn from this result alone.
+
+### 5.4 Exploratory and descriptive only (no verdict)
+
+From `results/sensitivity_results.csv` (mean over 30 seeds; whole USD rounded to 4 significant figures). The middle volume level (500 transactions) is the baseline cell, and 5 banks is the middle banks level; both are exploratory. Peak Liquidity Proxy is a proxy (methodology sec. 5), not Peak Liquidity. Models: A Sequential, B Prefunded, C Atomic PvP.
+
+**Grid level 1 (ample).** Mean Success Rate is the same in A, B and C within each cell: 0.9905 (baseline, banks 5, banks 10, burst), 0.9903 (volume 100) and 0.9904 (volume 1000).
+
+| Cell | Peak Liquidity Proxy A | B | C |
+|---|---|---|---|
+| baseline | 40,070,000 | 42,210,000 | 40,130,000 |
+| volume 100 | 17,970,000 | 19,930,000 | 17,960,000 |
+| volume 1000 | 54,910,000 | 57,100,000 | 55,030,000 |
+| banks 5 | 66,230,000 | 68,520,000 | 65,740,000 |
+| banks 10 | 90,770,000 | 93,250,000 | 90,350,000 |
+| burst | 40,070,000 | 43,130,000 | 40,130,000 |
+
+**Grid level 0.0625 (JPY stress).**
+
+| Cell | Success Rate A | B | C | Peak Liquidity Proxy A | B | C |
+|---|---|---|---|---|---|---|
+| baseline | 0.952 | 0.9438 | 0.952 | 31,610,000 | 23,650,000 | 23,210,000 |
+| volume 100 | 0.9603 | 0.953 | 0.9603 | 16,190,000 | 15,980,000 | 14,410,000 |
+| volume 1000 | 0.951 | 0.9435 | 0.951 | 39,770,000 | 24,990,000 | 24,750,000 |
+| banks 5 | 0.9422 | 0.9362 | 0.9422 | 56,730,000 | 51,280,000 | 50,150,000 |
+| banks 10 | 0.9587 | 0.9563 | 0.9587 | 84,280,000 | 82,170,000 | 80,180,000 |
+| burst | 0.952 | 0.9366 | 0.952 | 31,610,000 | 23,770,000 | 23,210,000 |
+
+Result: at level 1 the Peak Liquidity Proxy rises with volume and with the number of banks in all three models. At level 0.0625, B's mean Success Rate is below A's and C's in every cell, and A's and C's means are equal in every cell. Reading (unverified): a part of the rise with banks may reflect the per-bank balances, since the proxy sums over every bank of the run (definition in methodology sec. 5). These means are cell averages; they do not decide L\*, which is computed per seed. This is a descriptive pattern in simplified models, not a test. The per-cell, per-level values for all metrics are in `results/sensitivity_results.csv`.
