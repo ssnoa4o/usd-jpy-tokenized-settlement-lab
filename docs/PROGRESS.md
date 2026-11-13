@@ -422,3 +422,22 @@
     - 「None と表示される」は、スクリーンショットで実際にブラウザで "None" と出ることを確認したので、説明文はそのまま（レビューの低 3 は Styler 単体の挙動で、画面とは違った）。
   - この引き継ぎ分について `reviewer` の再レビューはしていない。
 - 次の日（Day 16）: Research Report（6〜8 ページ、`writer`）。数値は `results/` の CSV から取り、`findings.md` の限定を一緒に写す。
+
+## Day 16 — Research Report 初版（Markdown + PDF）・文献の照合
+- 新しい実験・判定・図の作り直しはしていない。`results/` は変更なし（`experiment_log.csv` は 4,053 行のまま）。
+- 決定（ユーザー、計画時）: 形式は `research/report.md`（正本）+ `research/report.pdf`。`literature_review.md` の外部の記述は今日、原典と照合する。
+- 完了（前日の残り）: Day 15 の commit `4cf94d9` を `reviewer` が再レビュー。高・中 0 件。丸めの表示（厳密な 0 は `0.0%`、1 は `100.0%`）、倍率 0.03125・0.09375 の表示、JPY shortage = 0.0625 の格子の確認、テストの期待値がエンジンを直接呼ぶこと、表示の削除がないことを確認した。低 5 件は記録のみ。
+- 完了（文献、`researcher`）: `literature_review.md` の外部の記述 42 件を `research/pdfs/` と公式ページで照合（2026-11-13）。確認済み 33、修正 6（OSFI の出典の位置、Himino 講演は CBDC・ステーブルコインの「代わり」ではなく「並ぶ選択肢」、BIS-1 の RVT の「RTGS と統合していない」はページ内で食い違うため削除、ほか）、確認できず 2（BIS-1 の「finality は under review」は削除。日銀の 2026 年 3 月の発表は Kamiyama 講演の発言としてのみ）。`sources.md` も修正。Web ページは要約を通して読んだ確認であり、PDF 全体のキーワード検索はやり直していない。
+- 決定（ユーザー、照合のあと）: BIS RVT（2026 年 7 月）の数字はレポートに入れない。「Agorá の報告書に USD/JPY の PvP 試験・定量的な流動性の結果はない」は「読んだ範囲では見つからなかった」と弱めて書く。骨組み（8 セクション、図 F1・F2・F6・F7・F4、表 5 つ）はそのまま。
+- 完了（本文、`writer`）: `research/report.md`。HANDOFF sec. 11 の 8 セクション + 再現の手順 + 参考文献。数値は findings.md と CSV から写しただけ。`writer` はファイルへの書き込みが仕組み上できなかったため、返ってきた本文を Claude が保存した。PDF が 14 ページになったため、ユーザーの判断（「重複を削って 9 ページ前後」）で、Claude が限界の箇条書きと sec. 6.3 などの重複を削った（判定と限定は削っていない）。
+- 完了（コード、`sim-engineer`）: `scripts/build_report_pdf.py`（Markdown → HTML → kaleido に付属の Chrome で A4 PDF。画像は base64 で埋め込み、Web 上の画像は拒否、上書きは `--force`、一時ファイル経由で置き換え）、`tests/test_build_report_pdf.py`（20 件）。依存に `markdown==3.7` を追加。`reviewer` の中 3 件（画像の検出漏れ、http 画像を取りに行く、`%20` のパス）と低 3 件を修正し、5 種類の改変がテストで検知されることを確認した。そのあと Claude が余白・文字の大きさ・行間・図の幅（80%）を変えた（CSS のみ）。CSS 変更後の `reviewer` の再レビューはしていない。
+- 検査（文書、`integrity-checker`）: 約 175 個の数値を照合し、不一致 1 件（0 s の B の proxy を「A と同じ値」と書いていた。4 桁の丸めでのみ同じ）。高 0 件。中 4 件（M1 その不一致、Table 1 の H4a・H4b のルールが不完全、H1a を「grows」と強く書いていた、B の failed の理由を断定）と低 4 件（CLS-2・CLS-3 の出典の割り当て、BOJ-6 の日付の注記、BOC-1 を逐語で引用していた、F1 と Table 3 の exposure の種類の違い）を修正。修正分を `integrity-checker` が再確認し、すべて解消、高・中 0 件。残りの低 2 件（BIS-3 の記述、commit `e4b322b`）は Claude が確認した。低 L2（BCBS と OSFI の引用の書き方）・L6（BIS-3 の URL の形が sources.md と違う）はそのまま。
+- 完了（README、Claude）: Status 行、Outputs so far、Project status 表に report を追加。
+- PDF: 12 ページ（本文 sec. 1〜8 が約 10 ページ、残りが再現の手順と参考文献）。HANDOFF の目安 6〜8 ページより長い。
+- pytest: 1454 passed（+31）。`scripts/precommit_check.sh` 問題なし。
+- 未完了 / 既知の制限:
+  - PDF の見た目のユーザー確認（`open research/report.pdf`）。
+  - BOC-1・OSFI の Web ページの文言はブラウザで逐語確認していない（レポートでは言い換え、OSFI は引用符なし）。
+  - BOJ-6 の URL のファイル名と日付の食い違いは未解明。
+  - 再レビューしていない: PDF スクリプトの CSS 変更（中身の処理は変えていない）。
+- 次の日（Day 17）: Policy Brief（2〜3 ページ、`writer`）。レポートの結果と限定をそのまま使い、「導入すべき」と断定しない。
