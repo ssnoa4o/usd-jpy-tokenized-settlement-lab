@@ -64,12 +64,17 @@ BASELINE_WIDGETS: dict[str, object] = {
 }  # fmt: skip
 
 
+# JPY multiplier of the "JPY shortage" button. It must be a level of the recorded grid (checked below).
+JPY_SHORTAGE_LEVEL = 0.0625
+
+
 @st.cache_data(show_spinner=False)
 def scenarios() -> dict[str, dict[str, object]]:
     """Scenario buttons: the baseline plus one change each, with levels taken from the recorded experiments."""
     levels = experiments.read_stress_levels(experiments.RESULTS_DIR / experiments.CALIBRATION_FILE)
-    lower = levels.lower_multipliers
-    jpy_level = lower[1] if len(lower) > 1 else lower[0]  # second lower level of the recorded JPY grid
+    if JPY_SHORTAGE_LEVEL not in levels.lower_multipliers:
+        raise ValueError(f"JPY level {JPY_SHORTAGE_LEVEL} is not in the recorded grid {levels.lower_multipliers}.")
+    jpy_level = JPY_SHORTAGE_LEVEL
     return {
         "Baseline": {},
         "JPY shortage": {"jpy_mult": jpy_level},
@@ -103,22 +108,23 @@ def sidebar_inputs() -> live.LiveInputs | str:
         for index, (name, changes) in enumerate(scenarios().items()):
             columns[index % 2].button(name, key=f"scenario_{index}", on_click=apply_scenario,
                                       args=(changes,), width="stretch")  # fmt: skip
-        st.caption("Levels used in the recorded experiments. Choose one, then press Run Simulation.")
+        st.caption("Each button puts every input back to the baseline (seeds 1-5) and changes one level, taken from "
+                   "the recorded experiments. Then press Run Simulation. The recorded results use 30 seeds.")
 
         group("Market")
         left, right = st.columns(2)
-        fx_rate = left.number_input("USD/JPY rate", 50.0, 300.0, step=1.0, format="%.1f", key="fx_rate")
+        fx_rate = left.number_input("USD/JPY rate", 50.0, 300.0, step=1.0, format="%.2f", key="fx_rate")
         count = right.number_input("Transactions", 100, 1000, step=100, key="count")
 
         group("Liquidity per bank")
         usd_mult = st.number_input("USD, multiple of the reference", 0.0, 4.0, step=0.0125,
-                                   format="%.4f", key="usd_mult")  # fmt: skip
+                                   format="%.5f", key="usd_mult")  # fmt: skip
         usd = round(ref_usd * usd_mult)
-        st.caption(f"{usd:,} USD per bank ({usd_mult:.4g} x the reference)")
+        st.caption(f"{usd:,} USD per bank ({usd_mult:.4g} x the reference {ref_usd:,})")
         jpy_mult = st.number_input("JPY, multiple of the reference", 0.0, 4.0, step=0.0125,
-                                   format="%.4f", key="jpy_mult")  # fmt: skip
+                                   format="%.5f", key="jpy_mult")  # fmt: skip
         jpy = round(ref_jpy * jpy_mult)
-        st.caption(f"{jpy:,} JPY per bank ({jpy_mult:.4g} x the reference)")
+        st.caption(f"{jpy:,} JPY per bank ({jpy_mult:.4g} x the reference {ref_jpy:,})")
 
         group("Stress")
         failure_pct = st.slider("Failure probability (%)", 0, 20, step=1, key="failure_pct")
@@ -285,9 +291,10 @@ def styled_summary(table: pd.DataFrame) -> "pd.io.formats.style.Styler":
     labels = dict(live.METRIC_LABELS)
     models = [column for column in table.columns if column != "Metric"]
     styler = table.style
-    for metric, pattern in live.METRIC_FORMATS.items():
+    for metric in live.METRIC_FORMATS:
         rows = table.index[table["Metric"] == labels[metric]]
-        styler = styler.format(pattern, subset=pd.IndexSlice[rows, models], na_rep=live.NOT_AVAILABLE)
+        styler = styler.format(lambda value, metric=metric: live.format_value(metric, value),
+                               subset=pd.IndexSlice[rows, models], na_rep=live.NOT_AVAILABLE)  # fmt: skip
     return styler
 
 

@@ -2,6 +2,7 @@
 
 import dataclasses
 import math
+import re
 from html import escape
 from pathlib import Path
 
@@ -237,8 +238,11 @@ def test_scenarios_change_one_input_using_recorded_levels() -> None:
     assert baseline["fx_rate"] == experiments.FX_RATE and baseline["count"] == experiments.COUNT
     assert baseline["delay"] == experiments.DELAY_SECONDS and baseline["failure_pct"] == 1
     assert baseline["usd_mult"] == 1.0 and baseline["jpy_mult"] == 1.0
+    assert baseline["first_seed"] == 1 and baseline["n_seeds"] == 5
+    assert baseline["n_banks"] == experiments.N_BANKS and baseline["arrival"] == experiments.ARRIVAL
+    assert baseline["models"] == list(MODEL_NAMES.values())
     expected = {
-        "JPY shortage": {"jpy_mult": levels.lower_multipliers[1]},
+        "JPY shortage": {"jpy_mult": 0.0625},
         "High failure": {"failure_pct": 5},
         "Long delay": {"delay": 300},
     }
@@ -272,3 +276,91 @@ def test_scenario_then_run_uses_the_scenario_inputs() -> None:
         assert shown.loc["Partial rate", name] == pytest.approx(expected[model]["partial_rate"], abs=1e-12)
     assert expected["sequential"]["partial_rate"] > expected["atomic"]["partial_rate"]
     assert "<dd>937,500,000</dd>" in texts(app.markdown)
+
+
+def test_scenario_after_a_run_shows_the_inputs_changed_warning() -> None:
+    app = small_run(new_app())
+    assert not any("inputs have changed" in w.value for w in app.warning)
+    scenario_button(app, "Long delay").click()
+    app.run()
+    assert any("inputs have changed" in w.value for w in app.warning)
+
+
+def test_comparison_table_rows_pair_each_model_with_its_own_values() -> None:
+    """Each <tr> of the comparison holds the model name and that model's values, in order."""
+    app = new_app()
+    scenario_button(app, "JPY shortage").click()  # A, B and C differ here
+    app.run()
+    app.number_input(key="first_seed").set_value(201)
+    app.slider(key="n_seeds").set_value(2)
+    app.button(key="run").click()
+    app.run()
+    case = {"count": 500, "fx_rate": 150.0, "n_banks": 2, "arrival": "sequential", "failure": 0.01,
+            "delay": 60.0, "usd": 100_000_000, "jpy": 937_500_000}  # fmt: skip
+    expected = independent_means(case, [201, 202])
+    table = next(m.value for m in app.markdown if '<table class="lab-compare">' in m.value)  # not the CSS block
+    rows = re.findall(r"<tr>(.*?)</tr>", table.split("<tbody>")[1])
+    assert len(rows) == 3
+    texts_seen = set()
+    for row, model in zip(rows, ["sequential", "prefunded", "atomic"]):
+        cells = [re.sub(r"<[^>]+>", "", cell) for cell in re.findall(r"<td[^>]*>(.*?)</td>", row)]
+        assert cells[0] == MODEL_NAMES[model]
+        want = [live.format_value(metric, expected[model][metric]) for metric, _ in live.HEADLINE_METRICS]
+        assert [cells[1], cells[2], cells[3], cells[5], cells[6]] == want
+        texts_seen.add(tuple(want))
+    assert len(texts_seen) == 3  # the three models really differ, so a swapped row would be caught
+
+
+def test_status_and_reason_table_keeps_every_row_and_value() -> None:
+    app = small_run(new_app(), failure_pct=5)
+    shown = next(df.value for df in app.dataframe if "Status / reason" in df.value.columns)
+    inputs = dataclasses.replace(live.default_inputs(), count=100, n_seeds=2, first_seed=201,
+                                 failure_probability=0.05)  # fmt: skip
+    reasons = live.reason_table(live.run_live(inputs)).set_index("Model")
+    assert list(shown["Status / reason"]) == [label for _, label in live.REASON_COLUMNS]
+    assert len(shown) == 12
+    for name in MODEL_NAMES.values():
+        assert list(shown[name]) == list(reasons.loc[name])
+    assert shown[MODEL_NAMES["sequential"]].sum() > 0
+
+
+def test_outcome_bar_and_reason_table_match_the_engine() -> None:
+    """The outcome-mix bar uses each state's own share; the status table has every row, summed over seeds."""
+    app = new_app()
+    scenario_button(app, "JPY shortage").click()
+    app.run()
+    app.number_input(key="first_seed").set_value(201)
+    app.slider(key="n_seeds").set_value(2)
+    app.button(key="run").click()
+    app.run()
+    case = {"count": 500, "fx_rate": 150.0, "n_banks": 2, "arrival": "sequential", "failure": 0.01,
+            "delay": 60.0, "usd": 100_000_000, "jpy": 937_500_000}  # fmt: skip
+    expected = independent_means(case, [201, 202])
+    table = next(m.value for m in app.markdown if '<table class="lab-compare">' in m.value)
+    colors = {"success_rate": "#C9D1DC", "partial_rate": "#E6A700", "failure_rate": "#5B6575"}
+    rows = re.findall(r"<tr>(.*?)</tr>", table.split("<tbody>")[1])
+    for row, model in zip(rows, ["sequential", "prefunded", "atomic"]):
+        assert MODEL_NAMES[model] in row
+        bar = re.search(r'<div class="lab-bar">(.*?)</div>', row).group(1)
+        shown = re.findall(r"width:([0-9.]+)%;background:(#[0-9A-F]+)", bar)
+        want = [(f"{expected[model][m] * 100:.2f}", c) for m, c in colors.items()]
+        assert shown == want  # each segment of THIS row uses this model's own share, in order
+    assert expected["sequential"]["partial_rate"] != expected["sequential"]["failure_rate"]
+    reasons = next(df.value for df in app.dataframe if "Status / reason" in df.value.columns)
+    assert list(reasons["Status / reason"]) == [label for _, label in live.REASON_COLUMNS]
+    sums: dict[str, dict[str, int]] = {}
+    for model in simulator.Model:
+        totals: dict[str, int] = {}
+        for seed in (201, 202):
+            data = transactions.generate_transactions(count=500, fx_rate=150.0, seed=seed)
+            params = simulator.SimulationParams(seed=seed, initial_usd=100_000_000, initial_jpy=937_500_000,
+                                                delay_seconds=60, failure_probability=0.01)  # fmt: skip
+            results, ledger = simulator.run_model(data, model, params)
+            row = metrics.calculate_metrics(results, data, params, ledger)
+            for column, _ in live.REASON_COLUMNS:
+                totals[column] = totals.get(column, 0) + int(row[column])
+        sums[model.value] = totals
+    shown = reasons.set_index("Status / reason")
+    for model, name in MODEL_NAMES.items():
+        for column, label in live.REASON_COLUMNS:
+            assert shown.loc[label, name] == sums[model][column]

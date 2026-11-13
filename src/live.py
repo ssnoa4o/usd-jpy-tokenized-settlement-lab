@@ -272,7 +272,21 @@ def format_value(metric: str, value: float) -> str:
     """One metric value as display text. NaN becomes 'n/a' (never 0)."""
     if value is None or math.isnan(value):
         return NOT_AVAILABLE
-    return METRIC_FORMATS[metric].format(value)
+    pattern = METRIC_FORMATS[metric]
+    text = pattern.format(value)
+    # Rounding must not hide a real difference: a small non-zero value is not shown as zero,
+    # and a share just below 100% is not shown as 100%.
+    if value > 0 and text == pattern.format(0):
+        return "<" + pattern.format(_smallest_step(pattern))
+    if pattern.endswith("%}") and value < 1 and text == pattern.format(1):
+        return ">" + pattern.format(1 - _smallest_step(pattern))
+    return text
+
+
+def _smallest_step(pattern: str) -> float:
+    """The smallest value a display pattern can show: 0.001 for '{:.1%}', 1 for '{:,.0f}', 0.1 for '{:,.1f}'."""
+    digits = int(pattern.split(".")[1][0])
+    return 10.0 ** -(digits + 2) if pattern.endswith("%}") else 10.0 ** -digits
 
 
 def headline_rows(summary: pd.DataFrame) -> list[dict[str, object]]:

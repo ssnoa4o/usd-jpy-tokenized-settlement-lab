@@ -405,6 +405,13 @@ def test_missing_verdict_files_raise_value_error(tmp_path: Path) -> None:
         ("average_settlement_time_seconds", 60.0, "60.0"),
         ("liquidity_utilization", 0.5, "50.0%"),
         ("gross_prefunding_usd", float("nan"), "n/a"),
+        ("partial_rate", 4e-05, "<0.1%"),  # a real partial is never shown as 0.0%
+        ("success_rate", 0.99996, ">99.9%"),  # and success below 1 is never shown as 100.0%
+        ("success_rate", 1.0, "100.0%"),
+        ("principal_exposure_usd", 0.4, "<1"),
+        ("principal_exposure_usd", 0.0, "0"),
+        ("average_settlement_time_seconds", 0.04, "<0.1"),
+        ("failure_rate", 0.001, "0.1%"),
     ],
 )
 def test_format_value(metric: str, value: float, text: str) -> None:
