@@ -6,7 +6,7 @@
 - Synthetic data only; nothing here describes a real bank, market or system.
 - No institution (BIS, BoJ, CLS, OSFI, Bank of Canada or any other) has reviewed, approved or endorsed it.
 
-Date: 2026-11-13. Version: first edition (Day 17).
+Date: 2026-11-14. Version: 1.0 (release candidate).
 
 Methods, decision rules and full results are in the research report, `research/report.md`. This brief makes no recommendation. It lists issues, trade-offs seen in the model, and what would need testing.
 

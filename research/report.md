@@ -6,7 +6,7 @@
 - Synthetic data only; nothing here describes a real bank, market or system.
 - No institution (BIS, BoJ, CLS, OSFI, Bank of Canada or any other) has reviewed, approved or endorsed it.
 
-Date: 2026-11-13. Version: first edition (Day 16).
+Date: 2026-11-14. Version: 1.0 (release candidate).
 
 ## 1. Abstract
 
@@ -212,7 +212,7 @@ The caveats attached to each result in sections 5 and 6 (JPY-only stress, the co
 1. The models are simplified and are not replicas of correspondent banking, tokenized bank deposits, CLS, RTGS systems or any production system. There is no netting, credit, intraday facility, queue, multi-currency routing or price movement, and replacement cost and operational risk are not modelled.
 2. The data are synthetic. Sizes, bank pairs, the rate of 150.00, balances and failure probabilities are design values, not calibrated to real markets. Failure is one independent draw per transaction; real failures are correlated. Results are not real bank performance, cost or failure rates.
 3. There are 30 seeds, one seed set, mostly 2 banks and one arrival pattern. Ranges are not confidence intervals, and the decision rules are not statistical tests.
-4. Protocol deviations, all recorded before the affected runs: calibration attempt 1 did not meet its grid condition and the grid was rebuilt to lower JPY only before any main run, with decision rules unchanged; a timing dry run on seeds 1 to 30 was made before Exp1, its outputs deleted and values not used, although the first lines of one file were seen (dry runs use test seeds since); and the Day 12 and Day 13 decisions on how rules are read in code were made before the runs.
+4. Protocol deviations, all recorded before the affected runs: calibration attempt 1 did not meet its grid condition and the grid was rebuilt to lower JPY only before any main run, with decision rules unchanged; a timing dry run on seeds 1 to 30 was made before Exp1, its outputs deleted and values not used, although the first lines of one file were seen (dry runs use test seeds since); and the decisions on how rules are read in code (for the Exp3/Exp4 runs and the sensitivity run) were made before those runs.
 5. On the literature side, the March 2026 Bank of Japan announcement was not found as a primary document, the Agorá test-phase claim rests on a BIS web page only, and the Agorá report was read in part.
 
 ## 8. Conclusion
@@ -225,18 +225,20 @@ The caveats attached to each result in sections 5 and 6 (JPY-only stress, the co
 
 ## Reproducibility
 
-Code and results are in the project repository. Each run records its parameters, seed list and git commit. Inside the project's virtual environment:
+Code and results are in the project repository (github.com/ssnoa4o/usd-jpy-tokenized-settlement-lab). Each run records its parameters, seed list and git commit. Inside the project's virtual environment:
 
 ```
-python -m src.experiments baseline
-python -m src.experiments stress
-python -m src.experiments sensitivity
-python -m src.verdicts
-python -m src.verdicts h3
-python -m src.figures
 python -m pytest -q
+python -m src.experiments baseline --force
+python -m src.experiments stress --force
+python -m src.experiments sensitivity --force
+python -m src.verdicts --force
+python -m src.verdicts h3 --force
+python -m src.figures --force
 streamlit run dashboard/app.py
 ```
+
+The experiment and figure commands refuse to run when the git working tree has uncommitted changes, and each run rewrites files in `results/`. To check a rerun, run one command on a clean checkout, compare with `git diff results/`, and restore with `git checkout -- results/` before the next command. The README gives the details. On 2026-11-14 this check was made from a fresh clone at commit 7f5d8a3: every result value matched the stored CSV files, and only the record columns (git commit and run time) differed.
 
 Main runs used seeds 1 to 30. Exp1 was run at commit 743f1ba, Exp3 and Exp4 with the verdict code at commit 5c3d59b, and Exp2 x Exp3 at commit 542043b. The figures were generated from existing CSVs at commit e4b322b. Numbers in this report come from `research/findings.md` and the files in `results/`. The dashboard calls the same engine for live exploratory runs; these are not recorded results.
 

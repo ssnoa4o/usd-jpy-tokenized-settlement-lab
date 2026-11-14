@@ -2,15 +2,21 @@
 
 Open-source research and simulation framework for tokenized USD/JPY foreign exchange settlement.
 
-> **Status: early draft (Day 19 of a 21-day plan).** The synthetic transaction generator, the bank ledger and the three settlement models (A: Sequential, B: Prefunded Tokenized, C: Atomic PvP) work, and each model is checked against an independent plain-Python reference implementation in the tests. The metrics (settlement rates, failure-reason counts, Principal Exposure, Gross Prefunding, Peak Liquidity Proxy, Liquidity Utilization, Average Settlement Time) are implemented. The experiment runner (`src/experiments.py`: Exp1 baseline, the Exp3/Exp4 `stress` runner and the Exp2 x Exp3 `sensitivity` runner) and the verdict code (`src/verdicts.py`, including the L* and H3 code) are implemented, and `src/figures.py` generates the seven main figures from the result CSVs (Day 14; no new simulation run). A Streamlit dashboard (`dashboard/app.py`) was added on Day 15; it runs the engine live for exploration and shows the recorded figures and verdicts, and it added no new experiment results. On Day 16 a first-edition research report was written (`research/report.md`, rendered to `research/report.pdf` by `python scripts/build_report_pdf.py`); it restates numbers from `research/findings.md` and the result CSVs and adds no new result. On Day 17 a first-edition policy brief was written (`policy/policy_brief.md`, rendered to `policy/policy_brief.pdf` with `python scripts/build_report_pdf.py --input policy/policy_brief.md --output policy/policy_brief.pdf`); it restates numbers and caveats from the report, adds no new result and makes no recommendation. On Day 18 a first-edition English slide deck was written (`presentation/slides.md`, 12 slides with speaker notes in HTML comments, rendered to a 16:9 `presentation/slides.pdf` with `python scripts/build_slides_pdf.py --force`); it restates numbers and caveats from the report and adds no new result. One liquidity calibration (attempt 1) was run on 2026-11-09; it did not meet its grid condition. On Day 11 the grid was revised to lower JPY only, and a second attempt (2026-11-10) met its conditions. The Exp1 baseline was then run on Day 11 (descriptive only; see `research/findings.md` sec. 3 and `results/baseline_results.csv`). On Day 12 the Exp3 and Exp4 main runs were done (1,170 runs, seeds 1 to 30) and their verdicts were computed by code committed before the run; the table, the verdicts and their limits are in `research/findings.md` sec. 4 (`results/stress_test_results.csv`, `results/verdicts.csv`). Some of these results follow from the model design and are not independent evidence. On Day 13 the Exp2 x Exp3 sensitivity run was done (2,700 runs, seeds 1 to 30) and the nine H3 verdicts were computed by code committed before the run: 0 supported, 2 not supported, 7 inconclusive, each on a coarse JPY-only liquidity grid; the two not supported verdicts may follow largely from the model rules (`research/findings.md` sec. 5; `results/h3_verdicts.csv`, `results/lstar_by_seed.csv`, `results/sensitivity_results.csv`). On Day 14 `research/findings.md` became a first edition: a summary of results, an interpretation section, a list of model limitations and a figure index were added, using only numbers already in the result CSVs.
+> **Status: release candidate (2026-11-14).** The repository contains a simulator with three settlement models, the experiments and their hypothesis verdicts, seven figures, a Streamlit dashboard, a research report, a policy brief and a 12-slide deck. Everything runs on synthetic data. This is an independent research prototype. Start reading with `research/report.pdf`. Full results are in `research/findings.md`.
+
+## Where to start
+
+1. **Research report (PDF):** `research/report.pdf`
+2. **Policy brief (PDF):** `policy/policy_brief.pdf`
+3. **Slides (PDF, 12 slides):** `presentation/slides.pdf`
+4. **Full results and reading notes:** `research/findings.md`
+5. **Dashboard:** `streamlit run dashboard/app.py` (see Quick start)
 
 ## Project overview
 
 This project is an independent research prototype. It models three simplified ways of settling a USD/JPY trade, runs them on the same synthetic transaction data under stated assumptions, and compares them on principal settlement risk, liquidity requirements, settlement time and operational resilience.
 
-It is not a blockchain transfer demo. The aim is a transparent, reproducible comparison of trade-offs. Any finding will apply only to the simplified models implemented here, under the stated assumptions. It will not show that the same effects occur in real markets.
-
-Outputs so far: a Python simulator, experiment CSVs, figures, a Streamlit dashboard, a research report, a policy brief and a slide deck (all first editions).
+It is not a blockchain transfer demo. The aim is a transparent, reproducible comparison of trade-offs. Any finding applies only to the simplified models implemented here, under the stated assumptions. It does not show that the same effects occur in real markets.
 
 ## Research question
 
@@ -32,12 +38,14 @@ Settlement outcomes use three states: `settled`, `partial` (one leg only) and `f
 
 ## Hypotheses under test
 
-These are questions the experiments will examine. None is assumed to be true. Each will be recorded as supported, not supported, or inconclusive.
+These are questions the experiments examine. None is assumed to be true. Each is recorded as supported, not supported, or inconclusive, under rules fixed before the runs (`research/hypotheses.md`).
 
 - **H1.** Does Atomic PvP reduce principal exposure from settlement where only one currency leg completes?
 - **H2.** Does PvP or prefunding require a certain amount of liquidity to be set aside or tied up?
 - **H3.** When transaction count, number of banks or arrival pattern change, does the relationship between liquidity demand and settlement success rate change?
 - **H4.** Do stress conditions such as liquidity shortage or settlement delay affect the three models differently?
+
+Some outcomes follow from the model design. For example, Model C has no `partial` outcomes and zero principal exposure by construction. These are correctness checks on the code. They are not evidence for a hypothesis.
 
 ## Methodology
 
@@ -48,63 +56,16 @@ Inputs are synthetic and illustrative. They do not represent real bank liquidity
 - **Gross Prefunding is not Peak Liquidity.** Gross prefunding is the currency-specific funds that must be secured before settlement. Peak liquidity is the maximum funding need during the simulation. Because the first version has no netting, fund reuse or credit, peak liquidity is labelled a proxy.
 - **Experiments:** (1) baseline, (2) sensitivity to transaction volume, number of banks and arrival pattern, crossed with the liquidity grid, (3) liquidity stress (JPY balances only), (4) delay and failure stress. Each condition is repeated over 30 random seeds (1 to 30) to show variation, not only averages. Details are in `research/methodology.md`.
 - **Reproducibility:** all data is simulated. Random seeds are configurable, and each run saves its seed, input data and parameters with its output.
-
-## Installation
-
-Requires Python 3 (developed and tested on macOS with Python 3.14). From the repository root:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-## Usage
-
-The transaction generator is the main entry point today. `python -m src.calibration` runs the liquidity calibration (methodology sec. 6); it refuses to overwrite existing outputs in `results/` unless `--force` is given. `python -m src.experiments baseline` runs the Exp1 baseline (seeds 1 to 30) and writes `results/run_metrics.csv` (one row per run), `results/baseline_results.csv` (per condition and model: mean, min, max across seeds), `results/summary.csv` (the same aggregation with an `experiment` column; later experiments add rows) and appends to `results/experiment_log.csv`. It refuses to run on uncommitted code unless `--allow-dirty` is given, and refuses to overwrite existing outputs unless `--force` is given (with `--force`, `experiment_log.csv` still gets new rows appended, so a rerun duplicates log rows). The same guards apply to `python -m src.experiments stress` (Exp3 and Exp4; writes `results/stress_run_metrics.csv` and `results/stress_test_results.csv`) and `python -m src.experiments sensitivity` (Exp2 x Exp3; writes `results/sensitivity_run_metrics.csv` and `results/sensitivity_results.csv`). `python -m src.verdicts` applies the pre-fixed rules in `research/hypotheses.md` to the stress results and writes `results/verdicts.csv`; `python -m src.verdicts h3` does the same for H3 and writes `results/lstar_by_seed.csv` and `results/h3_verdicts.csv`.
-
-`python -m src.figures` turns the result CSVs into the seven main figures (`f1_baseline`, `f2_liquidity_stress`, `f3_delay_failure`, `f4_h4b`, `f5_lstar`, `f6_exposure_liquidity`, `f7_proxy_delay`). It reads only the CSVs in `results/` (no simulation is run) and writes an HTML and a PNG file for each, plus one shared `plotly.min.js` and `figures_manifest.csv`, into `results/figures/`. It refuses to overwrite existing figure files (including `plotly.min.js` and the manifest) unless `--force` is given; with `--force`, old figure PNGs that the run did not write are removed, and values you typed into the `slide_candidate` column of the manifest are kept. It also refuses to run on uncommitted code unless `--allow-dirty` is given (the manifest records the code commit). The HTML files load Plotly from the local `plotly.min.js` next to them, so they open with no internet connection (keep the file in the same folder). `plotly.min.js` is a third-party file and is not stored in this repository (it is in `.gitignore`); the PNG files can be viewed directly, and running `python -m src.figures --force` creates `plotly.min.js` when it is missing, so that the HTML files open. With `--force` the figure files and the manifest are rewritten, but an existing `plotly.min.js` is left as it is (it only stops a run made without `--force`); if it is damaged, delete it and run the command again. PNG export uses `kaleido`, which needs Google Chrome or Chromium on the machine. If Chrome is not found, the HTML files and the manifest are still written, an error message is printed and the exit code is 1. To fix it, install Chrome, or run `plotly_get_chrome` inside the `.venv` (it downloads a private copy and changes nothing outside the environment), then rerun with `--force`. Use `--no-png` to skip PNG export.
-
-```bash
-python -m src.figures
-```
-
-`streamlit run dashboard/app.py` starts the dashboard in a browser (run it from the repository root, inside the `.venv`). It has three tabs. "Live simulation" runs the real engine with the inputs set in the sidebar (USD/JPY rate, transaction volume, number of banks, arrival pattern, initial USD and JPY balances as multiples of the calibration reference, settlement models, failure probability, settlement delay, seeds) and shows the metrics per model. A live run is exploratory: it is not one of the recorded experiments, nothing is saved to `results/`, and no hypothesis verdict is computed from it. "Recorded results" shows the seven figures built from the CSVs in `results/` and the verdicts read from `results/verdicts.csv` and `results/h3_verdicts.csv`, each with its caveat; verdicts are not recomputed. "Assumptions & limits" lists the main simplifications.
-
-```bash
-streamlit run dashboard/app.py
-```
-
-```bash
-python -m src.transactions
-```
-
-This writes two files:
-
-- `data/sample_transactions.csv`: 100 synthetic USD/JPY transactions (seed 42, 2 banks, one arrival every 10 seconds). Columns: `transaction_id`, `arrival_time`, `usd_payer`, `jpy_payer`, `usd_amount`, `jpy_amount`, `fx_rate`, `failure_draw`.
-- `data/sample_transactions_meta.json`: the parameters used to generate them.
-
-The data uses a fixed USD/JPY rate of 150.00. This is an illustrative simplification, not a market observation or forecast.
-
-## Project status
-
-| Component | Status |
-|---|---|
-| Synthetic transaction generator (`src/transactions.py`) | Implemented (Day 1, extended Day 5) |
-| Settlement simulator (`src/simulator.py`) | Models A (Day 6), B and C (Day 7) implemented |
-| Metrics (`src/metrics.py`) | Rates, failure-reason counts and Principal Exposure (Day 9); liquidity and time metrics (Day 10) |
-| Experiments | Calibration attempt 1 run (grid condition not met); attempt 2 (JPY-only grid) met its conditions; Exp1 baseline run on Day 11 (descriptive, no verdict; `findings.md` sec. 3); Exp3 and Exp4 main runs done on Day 12 (verdicts and limits in `findings.md` sec. 4); Exp2 x Exp3 sensitivity run done on Day 13 (nine H3 verdicts and limits in `findings.md` sec. 5) |
-| Figures (`src/figures.py`) | Seven figures generated from the result CSVs on Day 14 (`results/figures/`, index in `findings.md` sec. 8) |
-| Streamlit dashboard (`dashboard/app.py`, `src/live.py`) | Implemented (Day 15): live exploratory runs of the real engine, the recorded figures, and the recorded verdicts with their caveats |
-| Research report | First edition, Day 16 (`research/report.md`, `research/report.pdf`) |
-| Policy brief | First edition, Day 17 (`policy/policy_brief.md`, `policy/policy_brief.pdf`) |
-| Presentation | First edition, Day 18 (`presentation/slides.md`, `presentation/slides.pdf`) |
-
-The plan runs for 21 days. This README will be updated as components are added.
+- **Protocol history that matters.** The liquidity calibration was run twice. Attempt 1 (2026-11-09) did not meet its grid condition. The grid was then revised to lower JPY balances only, before any main run. Attempt 2 (2026-11-10) met its conditions. The verdict code was committed before each main run.
 
 ## Results
 
-The Exp1 baseline was run on Day 11. It is descriptive only: it records per-condition means and ranges over 30 seeds in `results/baseline_results.csv` (see `research/findings.md` sec. 3 for the table and reading notes) and gives no hypothesis verdict. Several of its outcomes follow from the model design and are correctness checks, not evidence. The Exp3 and Exp4 main runs (Day 12) are recorded in `research/findings.md` sec. 4, from `results/stress_test_results.csv` and `results/verdicts.csv`; the verdicts there are hypothesis tests under pre-fixed rules in a simplified synthetic model, and some follow largely from the model design (see the reading notes). The Exp2 x Exp3 sensitivity run (Day 13) is recorded in `research/findings.md` sec. 5, from `results/sensitivity_results.csv`, `results/lstar_by_seed.csv` and `results/h3_verdicts.csv`: nine H3 verdicts (0 supported, 2 not supported, 7 inconclusive) on a coarse JPY-only liquidity grid, with no single combined H3 verdict. The two not supported verdicts (arrival pattern, Models A and C) may follow largely from the model rules rather than being independent evidence. The other outputs so far are the liquidity calibration record (`results/calibration_attempt1.csv`, `results/calibration_checks_attempt1.csv`, `results/calibration.csv`, `results/calibration_checks.csv`, `results/experiment_log.csv`) and a diagnostic on test seeds (`results/diagnostic_two_bank_mirror.csv`); neither is a result about the settlement models. Per-run metrics are in `results/run_metrics.csv`. This section will be filled in only from CSV files generated by the code in this repository.
+Tables and reading notes are in `research/findings.md`. This README does not repeat them. All values come from the CSV files in `results/`.
+
+- **Exp1 baseline** (`results/baseline_results.csv`): descriptive only, with no hypothesis verdict. Several outcomes follow from the model design and are correctness checks, not evidence (findings sec. 3).
+- **Exp3 and Exp4 stress runs** (1,170 runs; `results/stress_test_results.csv`, `results/verdicts.csv`): hypothesis tests under pre-fixed rules in a simplified synthetic model. Some follow largely from the model design (findings sec. 4).
+- **Exp2 x Exp3 sensitivity run** (2,700 runs; `results/sensitivity_results.csv`, `results/lstar_by_seed.csv`, `results/h3_verdicts.csv`): nine H3 verdicts: 0 supported, 2 not supported, 7 inconclusive, on a coarse JPY-only liquidity grid. There is no single combined H3 verdict. The two not supported verdicts (arrival pattern, Models A and C) may follow largely from the model rules and are not independent evidence (findings sec. 5).
+- **Other files:** the calibration record (`results/calibration*.csv`) and a diagnostic on test seeds (`results/diagnostic_two_bank_mirror.csv`). Neither is a result about the settlement models.
 
 ## Limitations
 
@@ -113,7 +74,108 @@ The Exp1 baseline was run on Day 11. It is descriptive only: it records per-cond
 - Smart-contract-style completion in a simulation is not legal settlement finality. Legal finality depends on legal and regulatory frameworks that this project does not model.
 - Atomic PvP can reduce principal risk, meaning the risk that one leg settles and the other does not. It does not remove liquidity risk, because participants still need funds available to settle.
 - The first version excludes netting, credit, intraday liquidity facilities, multi-currency routing and market-price movement.
-- Any finding will hold only under the implemented models and assumptions.
+- Any finding holds only under the implemented models and assumptions.
+
+## Quick start
+
+Requires Python 3 (developed and tested with Python 3.14 on macOS). PNG figure export and the PDF build scripts need Google Chrome or Chromium.
+
+```bash
+git clone https://github.com/ssnoa4o/usd-jpy-tokenized-settlement-lab.git
+cd usd-jpy-tokenized-settlement-lab
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python -m pytest -q
+streamlit run dashboard/app.py
+```
+
+All tests should pass (1505 at commit 7f5d8a3; about 1 minute on a MacBook Air). The dashboard opens in a browser. Run both from the repository root, inside the `.venv`.
+
+## Reproducing the results
+
+Verified on 2026-11-14 from a fresh clone at commit 7f5d8a3 (Python 3.14.6, MacBook Air). Run these commands in this order:
+
+```bash
+python -m src.experiments baseline --force      # 180 runs, about 2 s
+python -m src.experiments stress --force        # 1,170 runs, about 12 s
+python -m src.experiments sensitivity --force   # 2,700 runs, about 23 s
+python -m src.verdicts --force
+python -m src.verdicts h3 --force
+python -m src.figures --force                   # about 14 s
+```
+
+`python -m src.calibration --force` reruns the liquidity calibration (about 5 s). The experiments read the stored `results/calibration.csv`, not a fresh calibration.
+
+`--force` is needed because the outputs already exist.
+
+**Clean working tree.** The experiment and figure commands record the git commit, so they refuse to run if the working tree has uncommitted changes. Every run rewrites files in `results/`, so the tree is not clean after one command. For each command:
+
+1. Run it on a clean checkout.
+2. Inspect `git diff --stat results/` and `git diff results/`.
+3. Run `git checkout -- results/` before the next command.
+
+`python -m src.verdicts` and `python -m src.calibration` do not refuse on a dirty tree: the verdict commands print a warning, and the calibration adds `-dirty` to the commit it records. `--allow-dirty` exists for test runs only. A run made with it is not a recorded run.
+
+**What to expect** (when `results/` is restored between commands as above):
+
+- Every result value is identical to the stored CSVs.
+- Only record columns change: `git_commit` and `run_utc` in the run-level CSVs and `calibration.csv`; `figure_code_commit` and `generated_utc` in `results/figures/figures_manifest.csv`.
+- The figure HTML files differ only in generated ids and metadata.
+- The PNG files and the aggregated CSVs were byte-identical (`baseline_results.csv`, `stress_test_results.csv`, `sensitivity_results.csv`, `verdicts.csv`, `h3_verdicts.csv`, `lstar_by_seed.csv`). The verdict files copy the `git_commit` of their input runs, so they also change if you rerun the experiments without restoring `results/` first.
+- `experiment_log.csv` is append-only, so a rerun adds rows (180, 1,170 and 2,700).
+- `summary.csv`: `baseline` rewrites it with baseline rows only. `stress` and `sensitivity` rebuild it from all experiment outputs. If you run the commands without restoring `results/` in between, keep the order above so that it ends up complete.
+
+**PDFs.**
+
+```bash
+python scripts/build_report_pdf.py --force
+python scripts/build_report_pdf.py --input policy/policy_brief.md --output policy/policy_brief.pdf --force
+python scripts/build_slides_pdf.py --force
+```
+
+These need Google Chrome or Chromium. `--force` is needed because the PDFs already exist.
+
+## Command reference
+
+**Transaction generator.** `python -m src.transactions` writes two files:
+
+- `data/sample_transactions.csv`: 100 synthetic USD/JPY transactions (seed 42, 2 banks, one arrival every 10 seconds). Columns: `transaction_id`, `arrival_time`, `usd_payer`, `jpy_payer`, `usd_amount`, `jpy_amount`, `fx_rate`, `failure_draw`.
+- `data/sample_transactions_meta.json`: the parameters used to generate them.
+
+The data uses a fixed USD/JPY rate of 150.00. This is an illustrative simplification, not a market observation or forecast.
+
+**Calibration.** `python -m src.calibration` runs the liquidity calibration (methodology sec. 6). It refuses to overwrite existing outputs unless `--force` is given.
+
+**Experiments.** `python -m src.experiments baseline` runs Exp1 (seeds 1 to 30). It writes `results/run_metrics.csv` (one row per run), `results/baseline_results.csv` (mean, min, max across seeds per condition and model) and `results/summary.csv`, and appends to `results/experiment_log.csv`. `stress` (Exp3 and Exp4) writes `results/stress_run_metrics.csv` and `results/stress_test_results.csv`. `sensitivity` (Exp2 x Exp3) writes `results/sensitivity_run_metrics.csv` and `results/sensitivity_results.csv`. All three refuse to run on uncommitted code unless `--allow-dirty` is given, and refuse to overwrite outputs unless `--force` is given.
+
+**Verdicts.** `python -m src.verdicts` applies the pre-fixed rules in `research/hypotheses.md` to the stress results and writes `results/verdicts.csv`. `python -m src.verdicts h3` does the same for H3 and writes `results/lstar_by_seed.csv` and `results/h3_verdicts.csv`.
+
+**Figures.** `python -m src.figures` builds the seven main figures (`f1_baseline`, `f2_liquidity_stress`, `f3_delay_failure`, `f4_h4b`, `f5_lstar`, `f6_exposure_liquidity`, `f7_proxy_delay`) from the CSVs in `results/`. No simulation is run. It writes an HTML and a PNG file per figure, plus `plotly.min.js` and `figures_manifest.csv`, into `results/figures/`.
+
+- Same guards as the experiments (`--force`, `--allow-dirty`). With `--force`, old PNGs the run did not write are removed.
+- The HTML files load the local `plotly.min.js` next to them, so they open without internet. It is a third-party file, not stored in this repository (it is in `.gitignore`). `python -m src.figures --force` creates it when missing; if it is damaged, delete it and rerun. The PNG files can be viewed directly.
+- PNG export uses `kaleido`, which needs Google Chrome or Chromium. If Chrome is not found, the HTML files and manifest are still written, an error is printed and the exit code is 1. Install Chrome, or run `plotly_get_chrome` inside the `.venv`, then rerun with `--force`. `--no-png` skips PNG export.
+
+**Dashboard.** `streamlit run dashboard/app.py` has three tabs.
+
+- "Live simulation" runs the real engine with the sidebar inputs and shows metrics per model. A live run is exploratory: it is not a recorded experiment, nothing is saved to `results/`, and no verdict is computed from it.
+- "Recorded results" shows the seven figures and the verdicts read from `results/verdicts.csv` and `results/h3_verdicts.csv`, each with its caveat. Verdicts are not recomputed.
+- "Assumptions & limits" lists the main simplifications.
+
+## Repository contents
+
+| Folder | What it holds |
+|---|---|
+| `src/` | Generator, simulator (Models A, B, C), metrics, calibration, experiments, verdicts, figures |
+| `tests/` | Tests, including each model against an independent plain-Python reference |
+| `dashboard/` | Streamlit dashboard |
+| `data/` | Sample synthetic transactions |
+| `results/` | Result CSVs, calibration record, experiment log; `figures/` holds the seven figures and manifest |
+| `research/` | Research question, literature review, hypotheses, methodology, findings, report |
+| `policy/` | Policy brief (md, pdf) |
+| `presentation/` | `slides.md` (with speaker notes), `slides.pdf` |
+| `scripts/` | PDF build scripts |
 
 ## Disclaimer
 

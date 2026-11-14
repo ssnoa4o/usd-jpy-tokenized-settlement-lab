@@ -84,7 +84,7 @@ Streamlit dashboard, runs the real engine locally (no network, no external API)
 
 *Live runs are exploratory. Verdicts come from the recorded runs (30 seeds), not from the demo. Synthetic data.*
 
-<!-- notes: Now the live demo, about three minutes. The dashboard is a Streamlit app. It calls the same simulation engine as the experiments, locally, with no network and no external service. It is not a mock-up with fixed values. Step one. I open the dashboard and say again that this is a research prototype on synthetic data. I run the Baseline and compare the three models. Step two. I lower the JPY liquidity multiplier to 0.0625 and run again. We watch settled, partial and failed counts change. Step three. I look at Model C. By design it has no one-leg-only state, so no partial transactions and no principal exposure; that is a correctness check, not a finding. Yet it still fails when JPY is short. Principal risk and liquidity risk are different problems. Step four. I go back to the recorded results and the CSV files, and show that the slide numbers come from those files. An important note: live runs are exploratory. Hypothesis verdicts come only from the recorded runs with 30 seeds. If the demo fails, I will show saved screenshots of the same steps, and the figures on the next slides. The full demo script is a separate document. -->
+<!-- notes: Now the live demo, about three minutes. The dashboard is a Streamlit app. It calls the same simulation engine as the experiments, locally, with no network and no external service. It is not a mock-up with fixed values. Step one. I open the dashboard and say again that this is a research prototype on synthetic data. I run the Baseline and compare the three models. Step two. I lower the JPY liquidity multiplier to 0.0625 and run again. We watch settled, partial and failed counts change. Step three. I look at Model C. By design it has no one-leg-only state, so no partial transactions and no principal exposure; that is a correctness check, not a finding. Yet it still fails when JPY is short. Principal risk and liquidity risk are different problems. Step four. I go back to the recorded results and the CSV files, and show that the slide numbers come from those files. An important note: live runs are exploratory. Hypothesis verdicts come only from the recorded runs with 30 seeds. -->
 
 ---
 
@@ -194,30 +194,18 @@ Streamlit dashboard, runs the real engine locally (no network, no external API)
 
 # Conclusion
 
-<div class="cols" markdown="1">
-<div markdown="1">
-
 | Item | Recorded outcome |
 |---|---|
 | H1a | descriptive only |
 | H1b | supported |
 | H2 | supported |
-
-</div>
-<div markdown="1">
-
-| Item | Recorded outcome |
-|---|---|
 | H3 | 0 supported, 2 not supported, 7 inconclusive |
 | H4a | not supported |
 | H4b | inconclusive |
-
-</div>
-</div>
 
 - **Interpretation, under these models:** principal risk and liquidity need are different quantities
 - Verdicts carry caveats: several directions follow from model design
 - Code and data: github.com/ssnoa4o/usd-jpy-tokenized-settlement-lab
 - **Next:** finer grid, USD stress, netting, legal finality
 
-<!-- notes: Here are the recorded outcomes. Several directions follow from model design, so the sizes carry more information than the verdicts. As an interpretation, under these simplified models, principal risk and liquidity need are different quantities. This is not a recommendation and says nothing about real markets or legal finality. The repository address is to be confirmed at publication. Thank you; I am happy to take questions. -->
+<!-- notes: Here are the recorded outcomes. Several directions follow from model design, so the sizes carry more information than the verdicts. As an interpretation, under these simplified models, principal risk and liquidity need are different quantities. This is not a recommendation and says nothing about real markets or legal finality. The code and data are in the public repository shown on the slide. Thank you; I am happy to take questions. -->
