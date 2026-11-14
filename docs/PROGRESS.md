@@ -441,3 +441,17 @@
   - BOJ-6 の URL のファイル名と日付の食い違いは未解明。
   - 再レビューしていない: PDF スクリプトの CSS 変更（中身の処理は変えていない）。
 - 次の日（Day 17）: Policy Brief（2〜3 ページ、`writer`）。レポートの結果と限定をそのまま使い、「導入すべき」と断定しない。
+
+## Day 17 — Policy Brief 初版（Markdown + PDF）
+- 新しい実験・判定・図の作り直しはしていない。`results/` は変更なし。コード（`src/`・`tests/`・`scripts/`）も変更なし。
+- 決定（ユーザー、計画時）: 形式は `policy/policy_brief.md`（正本）+ `policy/policy_brief.pdf`。図は既存の 1 枚（F6）。
+- 完了（本文、`writer`）: `policy/policy_brief.md`。HANDOFF sec. 12 の 6 セクションを指定の順に。数値は `research/report.md` からの写しのみ。Key Findings に条件（合成データ、seeds 1-30、2 banks、1% failure、60 s、JPY のみのストレス）を併記。H1b・H2 の設計由来の方向、H4a と H3 の not supported 2 件がモデルの規則から来るかもしれないこと、C の exposure 0 は設計上、proxy ≠ Peak Liquidity を結果と同じ段落に置いた。推奨なし。参考文献は BCBS-1・BIS-2・BOJ-7 の 3 件。
+- 完了（調整、Claude）: 初稿の PDF が 4 ページ → 重複を削って 3 ページ（判定と限定は削っていない）。言い回し 5 か所: Key Finding 4 に差の大きさ（0.0125 で A 76,250,000 / B 1,230,000 USD）を追加、「lowest principal exposure (C)」→「without a one-leg-only state (C)」、「may differ a great deal」→「may differ」、「reduces principal risk」を削除、「Real failures often cluster」（出典なし）→「may be correlated」。
+- 検査（`integrity-checker`）: 約 45 個の数値を CSV・report と照合し、不一致 0、高・中 0。低 3: 「mostly 2 banks」があいまい → 「2 banks (5 and 10 only in the H3 sensitivity runs)」に修正。「Version: first edition (Day 17)」の作業日表記（report と同じ形式なので Day 20 の公開前チェックでまとめて判断）、BCBS-1 の前に「in direction only」を足す案（report と同じ書き方なのでそのまま）は未対応。低 1 件の修正と最後の重複削除のあとの再検査はしていない（数値は変えていない）。
+- 完了（README、Claude）: Status 行、Outputs so far、Project status 表に Policy Brief を追加。
+- PDF: 3 ページ（HANDOFF の目安 2〜3 ページ内）。Claude が 3 ページの画像を目で確認（最後の数文の削除前の版）。
+- pytest: 1454 passed（変化なし）。1 回目の実行で `tests/test_dashboard.py::test_low_usd_multiplier_reaches_the_engine` が 1 件失敗。`integrity-checker` と同時に動いていた時で、単独の再実行・全体の再実行ともに成功したため、AppTest の 60 秒の時間切れとみている（失敗のメッセージは出力を短くしたため残っていない。原因は確定していない）。
+- 未完了 / 既知の制限:
+  - ユーザーの目視確認: `open research/report.pdf`（Day 16 の残り）と `open policy/policy_brief.pdf`。
+  - Brief は report の結果を短くしただけで、政策上の論点（決済資産の違い、参加者離脱、代替処理、法的 finality）はモデルにない。Brief の中でそう明記している。
+- 次の日（Day 18）: 英語スライド 10〜12 枚（15 分）。図は `results/figures/` から。数値は CSV から取り、判定には限定を一緒に写す。
