@@ -6,7 +6,7 @@
 - Synthetic data only; nothing here describes a real bank, market or system.
 - No institution (BIS, BoJ, CLS, OSFI, Bank of Canada or any other) has reviewed, approved or endorsed it.
 
-Date: 2026-11-14. Version: 1.0 (release candidate).
+Date: 2026-11-14. Version: 1.0.
 
 ## 1. Abstract
 
@@ -188,9 +188,9 @@ All ranges are min to max over 30 seeds, not confidence intervals. Spread is wid
 
 **What the runs record, and how it may be read.** Results are in sections 5 and 6. The interpretation below is tentative and holds only under these simplified models.
 
-Principal risk and liquidity need are different quantities. Principal risk is the one-leg-only state, measured here by Principal Exposure. Liquidity need is how much money must be available, measured by Gross Prefunding and the Peak Liquidity Proxy, and it appears as insufficient funds. In C, Principal Exposure is 0 in every cell by construction. Yet C's Failure Rate was 0.2273 at JPY multiplier 0.0125. In these models, atomic PvP removes the one-leg-only state but not liquidity risk. This is consistent with the sources cited in section 2, which describe PvP as designed to eliminate principal risk but not liquidity risk; our result does not validate them, and they do not validate our model.
+Principal risk and liquidity need are different quantities. Principal risk is the one-leg-only state, measured here by Principal Exposure. Liquidity need is how much money must be available, measured by Gross Prefunding and the Peak Liquidity Proxy, and it appears as insufficient funds. In C, Principal Exposure is 0 in every cell by construction. Yet C's Failure Rate was 0.2273 at JPY multiplier 0.0125. Both follow from C's validate-then-commit rule (by design), so they are a correctness check and a measure of size, not independent evidence. In these models, atomic PvP removes the one-leg-only state but not liquidity risk. This is consistent with the sources cited in section 2, which describe PvP as designed to eliminate principal risk but not liquidity risk; our result does not validate them, and they do not validate our model.
 
-Prefunding and atomicity are different. B reserves funds, but under an injected failure it still records partial transactions (Partial Rate 0.009533 and Principal Exposure 2,596,000 USD at baseline), just as A does. C validates both legs and commits once. A reservation alone does not make settlement atomic.
+Prefunding and atomicity are different. B reserves funds, but under an injected failure it still records partial transactions (Partial Rate 0.009533 and Principal Exposure 2,596,000 USD at baseline), just as A does. A and B are identical at ample liquidity by construction, so this is a correctness check that illustrates the distinction, not evidence for it. C validates both legs and commits once. A reservation alone does not make settlement atomic.
 
 Smart-contract-style completion in the simulation is not legal settlement finality. Legal finality depends on legal and regulatory frameworks that this study does not model. BIS itself separates workflow-level atomicity from legal finality.
 
@@ -212,7 +212,7 @@ The caveats attached to each result in sections 5 and 6 (JPY-only stress, the co
 1. The models are simplified and are not replicas of correspondent banking, tokenized bank deposits, CLS, RTGS systems or any production system. There is no netting, credit, intraday facility, queue, multi-currency routing or price movement, and replacement cost and operational risk are not modelled.
 2. The data are synthetic. Sizes, bank pairs, the rate of 150.00, balances and failure probabilities are design values, not calibrated to real markets. Failure is one independent draw per transaction; real failures are correlated. Results are not real bank performance, cost or failure rates.
 3. There are 30 seeds, one seed set, mostly 2 banks and one arrival pattern. Ranges are not confidence intervals, and the decision rules are not statistical tests.
-4. Protocol deviations, all recorded before the affected runs: calibration attempt 1 did not meet its grid condition and the grid was rebuilt to lower JPY only before any main run, with decision rules unchanged; a timing dry run on seeds 1 to 30 was made before Exp1, its outputs deleted and values not used, although the first lines of one file were seen (dry runs use test seeds since); and the decisions on how rules are read in code (for the Exp3/Exp4 runs and the sensitivity run) were made before those runs.
+4. Protocol deviations: calibration attempt 1 did not meet its grid condition and the grid was rebuilt to lower JPY only before any main run, with decision rules unchanged; a timing dry run on seeds 1 to 30 was made before Exp1, its outputs deleted and values not used, although the first lines of one file were seen (dry runs use test seeds since); and the decisions on how rules are read in code were fixed before those runs. For the Exp3/Exp4 runs, the verdict code was committed before the run (commit 5c3d59b), but the written note in `methodology.md` was added in the same commit as the results (3708fe4). For the sensitivity run, both the code and the written note were committed before the run (commit 542043b).
 5. On the literature side, the March 2026 Bank of Japan announcement was not found as a primary document, the Agorá test-phase claim rests on a BIS web page only, and the Agorá report was read in part.
 
 ## 8. Conclusion

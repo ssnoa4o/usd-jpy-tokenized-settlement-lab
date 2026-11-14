@@ -2,7 +2,7 @@
 
 Open-source research and simulation framework for tokenized USD/JPY foreign exchange settlement.
 
-> **Status: release candidate (2026-11-14).** The repository contains a simulator with three settlement models, the experiments and their hypothesis verdicts, seven figures, a Streamlit dashboard, a research report, a policy brief and a 12-slide deck. Everything runs on synthetic data. This is an independent research prototype. Start reading with `research/report.pdf`. Full results are in `research/findings.md`.
+> **Status: version 1.0 (2026-11-14).** The repository contains a simulator with three settlement models, the experiments and their hypothesis verdicts, seven figures, a Streamlit dashboard, a research report, a policy brief and a 12-slide deck. Everything runs on synthetic data. This is an independent research prototype. Start reading with `research/report.pdf`. Full results are in `research/findings.md`.
 
 ## Where to start
 
@@ -40,10 +40,12 @@ Settlement outcomes use three states: `settled`, `partial` (one leg only) and `f
 
 These are questions the experiments examine. None is assumed to be true. Each is recorded as supported, not supported, or inconclusive, under rules fixed before the runs (`research/hypotheses.md`).
 
-- **H1.** Does Atomic PvP reduce principal exposure from settlement where only one currency leg completes?
-- **H2.** Does PvP or prefunding require a certain amount of liquidity to be set aside or tied up?
-- **H3.** When transaction count, number of banks or arrival pattern change, does the relationship between liquidity demand and settlement success rate change?
-- **H4.** Do stress conditions such as liquidity shortage or settlement delay affect the three models differently?
+The research question is broken into four themes. Each theme has one or two hypotheses with a primary metric and comparison fixed in `research/hypotheses.md`:
+
+- **H1. Principal exposure.** H1a (descriptive, no verdict): how Principal Exposure in A and B responds as the injected failure probability rises. H1b: B has lower Principal Exposure than A under liquidity stress.
+- **H2. Liquidity and funding.** The gap in the Peak Liquidity Proxy between B and A is larger at a 300 s settlement delay than at 0 s.
+- **H3. Scale, participants and arrival pattern.** The lowest initial-liquidity level at which Success Rate reaches 95% (L\*) differs between factor levels (transaction volume, number of banks, arrival pattern). There are nine separate verdicts (three factors x three models) and no combined verdict.
+- **H4. Stress affects models differently.** H4a: under liquidity stress, the change in Success Rate differs between A and C. H4b: under delay stress, the change in Principal Exposure differs between A and B.
 
 Some outcomes follow from the model design. For example, Model C has no `partial` outcomes and zero principal exposure by construction. These are correctness checks on the code. They are not evidence for a hypothesis.
 
@@ -90,11 +92,11 @@ python -m pytest -q
 streamlit run dashboard/app.py
 ```
 
-All tests should pass (1505 at commit 7f5d8a3; about 1 minute on a MacBook Air). The dashboard opens in a browser. Run both from the repository root, inside the `.venv`.
+All tests should pass (1505 tests; about 1 minute on a MacBook Air). The dashboard opens in a browser. Run both from the repository root, inside the `.venv`.
 
 ## Reproducing the results
 
-Verified on 2026-11-14 from a fresh clone at commit 7f5d8a3 (Python 3.14.6, MacBook Air). Run these commands in this order:
+Verified on 2026-11-14 from a fresh clone at commit 7f5d8a3 (Python 3.14.6, MacBook Air). Later commits changed only documentation and PDFs, not code or results. Run these commands in this order:
 
 ```bash
 python -m src.experiments baseline --force      # 180 runs, about 2 s

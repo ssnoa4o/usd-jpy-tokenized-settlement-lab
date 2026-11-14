@@ -27,7 +27,9 @@ Metrics (defined in the methodology): principal exposure, success rate, partial 
 - H3 (to be tested): Do transaction volume, number of banks, and arrival pattern change the lowest initial-liquidity level at which the success rate reaches a stated target?
 - H4 (to be tested): Do liquidity stress and delay change success rate and amount-based principal exposure differently across the models?
 
-These statements are open questions. No experiment has been run. Each will be recorded as supported, not supported, or inconclusive, using only numbers from `results/*.csv`.
+These statements are open questions. No experiment had been run when this section was written (Day 4). Each will be recorded as supported, not supported, or inconclusive, using only numbers from `results/*.csv`.
+
+Update, 2026-11-14: the experiments have since been run. The hypotheses were refined into H1a, H1b, H2, H3, H4a and H4b with fixed decision rules in `research/hypotheses.md` before the main runs. The recorded verdicts are in `research/findings.md`, `results/verdicts.csv` and `results/h3_verdicts.csv`. The text above is kept as written on Day 4.
 
 ## Out of scope
 

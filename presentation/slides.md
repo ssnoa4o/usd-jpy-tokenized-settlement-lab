@@ -149,12 +149,12 @@ Streamlit dashboard, runs the real engine locally (no network, no external API)
 - **H4a not supported:** A and C had equal Success Rate in all 150 pairs; may follow from model rules
 - **H4b inconclusive:** mixed signs at 300 s, reversal at 60 s
 - **H3:** 0 supported, 2 not supported, 7 inconclusive (coarse grid)
-- C still failed: Failure Rate 0.2273 at multiplier 0.0125
+- C still failed (by design): Failure Rate 0.2273 at multiplier 0.0125
 
 </div>
 </div>
 
-<!-- notes: This figure shows success, partial and failure rates as the JPY multiplier falls. H4a is recorded as not supported, because A and C had equal Success Rate in every level and seed pair. Caveat: with USD at its reference level, both may fail exactly when the JPY leg is short, so this equality may follow from model rules. That is a proposed reading, not verified. H4b, delay stress at JPY multiplier 0.09375, is recorded as inconclusive: at 300 seconds the paired difference was positive in 8 seeds, negative in 1 and zero in 21, and the 60 second check was a reversal. The methodology anticipated little or no difference, because amount-based exposure ignores delay directly. For H3, most of the nine verdicts were inconclusive, and none was supported. The grid is coarse between the top two levels, so each is a verdict on this grid only. The two not supported verdicts may also follow from model rules. C had no partial transactions but still failed when funds were short. All stress here lowers JPY only. -->
+<!-- notes: This figure shows success, partial and failure rates as the JPY multiplier falls. H4a is recorded as not supported, because A and C had equal Success Rate in every level and seed pair. Caveat: with USD at its reference level, both may fail exactly when the JPY leg is short, so this equality may follow from model rules. That is a proposed reading, not verified. H4b, delay stress at JPY multiplier 0.09375, is recorded as inconclusive: at 300 seconds the paired difference was positive in 8 seeds, negative in 1 and zero in 21, and the 60 second check was a reversal. The methodology anticipated little or no difference, because amount-based exposure ignores delay directly. For H3, most of the nine verdicts were inconclusive, and none was supported. The grid is coarse between the top two levels, so each is a verdict on this grid only. The two not supported verdicts may also follow from model rules. C had no partial transactions but still failed when funds were short. That follows from C's validate-then-commit rule, so it is a correctness check, not independent evidence. All stress here lowers JPY only. -->
 
 ---
 
@@ -185,7 +185,7 @@ Streamlit dashboard, runs the real engine locally (no network, no external API)
 - Synthetic data; one seed set; ranges are not confidence intervals
 - Stress lowers JPY only; H3 grid is coarse
 - Smart-contract-style completion is not legal settlement finality
-- In these models, Atomic PvP removes the one-leg-only state, not liquidity risk
+- In these models, Atomic PvP removes the one-leg-only state, not liquidity risk (this follows from the model rules)
 - **Next tests:** finer grid; USD or two-currency stress; netting and credit; correlated failures
 
 <!-- notes: The limitations matter. The models are simplified, with no netting, credit, queue or retry. The data are synthetic, and the ranges are not confidence intervals. Stress lowers JPY only. Simulated completion is not legal settlement finality, and in these models atomic PvP removes the one-leg-only state but not liquidity risk. Next tests need new runs: a finer grid, other stress types, netting and credit, and correlated failures. -->
