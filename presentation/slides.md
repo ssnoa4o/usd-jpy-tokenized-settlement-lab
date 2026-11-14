@@ -14,7 +14,7 @@ Presenter: ssnoa4o · 2026-11
 
 - An FX trade has two payment legs, for example USD and JPY
 - **Principal risk:** one leg settles and the other does not (Herstatt, 1974) [CLS-4]
-- **Liquidity risk:** a bank cannot pay on time because a counterparty has not paid yet
+- **Liquidity risk:** a bank cannot pay on time because a counterparty has not paid yet [OSFI-1]
 - PvP is "designed to eliminate principal risk, but will not eliminate a bank's replacement cost risk or liquidity risk" [BCBS-1]
 - CLS says its service cuts funding needs by more than 96%. That is CLS's own claim; we did not test it [CLS-3]
 
@@ -84,7 +84,7 @@ Streamlit dashboard, runs the real engine locally (no network, no external API)
 
 *Live runs are exploratory. Verdicts come from the recorded runs (30 seeds), not from the demo. Synthetic data.*
 
-<!-- notes: Now the live demo, about three minutes. The dashboard is a Streamlit app. It calls the same simulation engine as the experiments, locally, with no network and no external service. It is not a mock-up with fixed values. Step one. I open the dashboard and say again that this is a research prototype on synthetic data. I run the Baseline and compare the three models. Step two. I lower the JPY liquidity multiplier to 0.0625 and run again. We watch settled, partial and failed counts change. Step three. I look at Model C. By design it has no one-leg-only state, so no partial transactions and no principal exposure; that is a correctness check, not a finding. Yet it still fails when JPY is short. Principal risk and liquidity risk are different problems. Step four. I go back to the recorded results and the CSV files, and show that the slide numbers come from those files. An important note: live runs are exploratory. Hypothesis verdicts come only from the recorded runs with 30 seeds. If the demo fails, I will use the backup figures on the next slides. The full demo script is a separate document. -->
+<!-- notes: Now the live demo, about three minutes. The dashboard is a Streamlit app. It calls the same simulation engine as the experiments, locally, with no network and no external service. It is not a mock-up with fixed values. Step one. I open the dashboard and say again that this is a research prototype on synthetic data. I run the Baseline and compare the three models. Step two. I lower the JPY liquidity multiplier to 0.0625 and run again. We watch settled, partial and failed counts change. Step three. I look at Model C. By design it has no one-leg-only state, so no partial transactions and no principal exposure; that is a correctness check, not a finding. Yet it still fails when JPY is short. Principal risk and liquidity risk are different problems. Step four. I go back to the recorded results and the CSV files, and show that the slide numbers come from those files. An important note: live runs are exploratory. Hypothesis verdicts come only from the recorded runs with 30 seeds. If the demo fails, I will show saved screenshots of the same steps, and the figures on the next slides. The full demo script is a separate document. -->
 
 ---
 

@@ -57,3 +57,8 @@ docs/DO_NOT_COMMIT.md
 
 # Source PDFs read locally (not published)
 research/pdfs/
+
+# Presenter-only files: demo script, speaker script and demo backup screenshots (never published)
+presentation/demo_script.md
+presentation/speaker_script.md
+presentation/demo_backup/

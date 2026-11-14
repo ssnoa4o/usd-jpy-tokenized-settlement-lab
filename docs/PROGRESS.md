@@ -487,3 +487,27 @@
   - スライド 12 の GitHub URL は公開時に確認（`git remote` とは一致）。
   - ユーザーの目視確認: `open presentation/slides.pdf`、および Day 16・17 の report / brief の PDF。
 - 次の日（Day 19）: 約 3 分のデモ台本と英語の発表原稿、デモ失敗時の予備（スクリーンショット）、通しで時間を測る。
+
+## Day 19 — デモ台本・発表原稿（slides.md の notes から生成）・予備のスクリーンショット
+- 新しい実験・判定・図の作り直しはしていない。`results/` は変更なし。ダッシュボードのコードも変更なし。
+- 決定（ユーザー、計画時）: デモ失敗時の予備はスクリーンショット。発表原稿は slides.md の notes から別ファイルに書き出す（正本は slides.md）。図 F7・F6・F2 の小さい文字は今日は直さない。
+- 完了（デモの固定条件、Claude）: ダッシュボードの既定値（FX 150、500 件、2 banks、sequential、1% failure、60 s、seeds 1-5）と既存の Scenario ボタン（Baseline → JPY shortage 0.0625）。AppTest で実際のエンジンを動かして画面の値を記録した（exploratory、結果ではない）。`integrity-checker` が `src.live` で再実行し全値一致。
+- 完了（台本、`writer` + Claude）: `presentation/demo_script.md`。6 ステップ・約 3:00、話す部分 365 語、各ステップの予備、画面に出る予想値の表（"seeds 1-5, exploratory" と明記）、よくある問題。Claude が UI と照合して修正: "Smart-contract completion" → "Simulated completion"、"reduces principal risk" 型の表現 2 か所、05 の説明（live run ではなく記録済みの判定）、04 の表の最後の行が表内スクロールで見えないことの注記。
+- 完了（予備、Claude）: `presentation/demo_backup/01_start.png`〜`05_recorded.png`（ヘッドレス Chrome、1440 × 1000、撮影用スクリプトは scratchpad でコミットしない）。Claude が 5 枚とも目で確認。05 は図のタイトルが右で切れたため、判定の表（verdicts）を撮る形に変えた。
+- 完了（発表原稿、`sim-engineer`）: `scripts/build_speaker_script.py` → `presentation/speaker_script.md`（150 語/分の目安の表つき）。`build_slides_pdf.py` の `split_slides`・フェンス判定を import して再利用し、notes の収集だけ別のループ（スライド数を `split_slides` と照合）。`tests/test_build_speaker_script.py` 24 件。
+- 検査（`reviewer`）: 高 0。中 2（本文なしスライドの notes が黙って消える、テストで検知できない改変 4 種）、低 7。中 2 と低 4 件（入力ファイルへの上書き拒否、フェンス内の `# ` をタイトルにしない、デモのスライドが見つからない時の警告、丸めの注記）を `sim-engineer` が修正し、各改変がテストで検知されることをコピー上で確認。低 6・7・8（notes 内の `---`、固定の .tmp 名、検査の順番）は未対応。修正後の `reviewer` の再レビューはしていない。
+- 検査（`integrity-checker`、Day 18 のスライド修正の再検査も含む）: 高 0、中 1、低 4。スライドの数値（H2 13,792,920.307、H1b 0.0125 の A/B、H4a の 150 組、H4b の +8/−1/0×21 など）はすべて CSV と一致。
+  - 中 1: スライド 06 の notes が予備のスクリーンショットに触れていない → notes を "I will show saved screenshots of the same steps, and the figures on the next slides." に修正。
+  - 低: 台本の語数 380 → 365 に修正。スライド 2 の出典行の [OSFI-1] が本文で使われていない → Liquidity risk の箇条書きに [OSFI-1] を付けた（report と同じ出典の割り当て）。slides.pdf を作り直した（12 ページ）。
+  - 低（記録のみ）: 合計時間の余裕が小さい（下記）。
+  - 修正後の再検査はしていない（数値は変えていない）。
+- 完了（README、Claude）: Status 行（Day 19）、Outputs so far、Project status 表。
+- 時間の目安（150 語/分の計算。声に出しての計測はまだ）: notes 合計 1,743 語 ≈ 11.6 分（スライド 06 を除くと 1,548 語 ≈ 10.3 分）+ デモ ≈ 2.5〜3 分。スライド 06 の notes を全部読むと約 14.6 分で、15 分の枠に余裕がほぼない。本番ではスライド 06 は最初の数文だけにしてデモに入る案をユーザーに提案済み。
+- pytest: 1505 passed（+24）。`scripts/precommit_check.sh` 問題なし。
+- 未完了 / 既知の制限:
+  - ユーザーによる計測: 原稿の読み上げとデモの通し（タイマー）。結果を見てスライド 06 の notes を削るか決める。
+  - ユーザーの目視確認: `open presentation/slides.pdf`、`research/report.pdf`、`policy/policy_brief.pdf`、`presentation/demo_backup/`。
+  - ダッシュボードの Recorded results の図のタイトルが 1440 px 幅で右端が切れる（範囲外のため未修正、Day 20 に相談）。
+  - 図 F7・F6・F2 の小さい文字（Day 18 の残り、今日は直さない決定）。
+- 次の日（Day 20）: 新しい環境で README どおりに実行（テスト・依存関係・図・CSV・ダッシュボード）、GitHub 公開前チェック。
+- 決定（ユーザー、Day 19 の終わり）: 公開範囲。`presentation/demo_script.md`・`presentation/speaker_script.md`・`presentation/demo_backup/` は発表者専用で公開しない（`.gitignore` に追加、commit していない）。README からもこれらへの言及を削除した。`slides.md`（notes を含む）と `slides.pdf` は公開のまま。`scripts/build_speaker_script.py` とテストは公開する（出力先は非公開）。
