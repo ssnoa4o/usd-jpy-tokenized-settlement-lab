@@ -455,3 +455,35 @@
   - ユーザーの目視確認: `open research/report.pdf`（Day 16 の残り）と `open policy/policy_brief.pdf`。
   - Brief は report の結果を短くしただけで、政策上の論点（決済資産の違い、参加者離脱、代替処理、法的 finality）はモデルにない。Brief の中でそう明記している。
 - 次の日（Day 18）: 英語スライド 10〜12 枚（15 分）。図は `results/figures/` から。数値は CSV から取り、判定には限定を一緒に写す。
+
+## Day 18 — 英語スライド 12 枚（Markdown + 16:9 PDF）
+- 新しい実験・判定・図の作り直しはしていない。`results/` は変更なし。
+- 決定（ユーザー、計画時）: 形式は `presentation/slides.md`（正本）→ HTML → Chrome で `presentation/slides.pdf`（Day 16 と同じ仕組み、新しい依存なし）。発表者名は ssnoa4o。
+- 完了（コード、`sim-engineer`）: `scripts/build_slides_pdf.py`（`---` で分割、`<!-- notes: ... -->` は PDF に出さない、13.333 × 7.5 in、各スライドにフッター。はみ出しは隠さずエラー）と `tests/test_build_slides_pdf.py`。`build_report_pdf.py` の画像埋め込みの関数を import して再利用し、`build_report_pdf.py` 自体は変えていない。
+- 完了（本文、`writer`）: HANDOFF sec. 10 の 12 枚。数値は report / brief からの写しのみ。話す要点のメモを各スライドに入れた。初稿のメモは 1,896 語（デモ込みで約 16 分）だったので、時間の目安まで削った。
+- 調整（Claude、PDF を画像で目視）:
+  - 図のスライド 7〜9 がはみ出したため、図と箇条書きを 2 列にした（`.cols.figure`）。
+  - 本文 18 → 20pt、表 14 → 16pt。
+  - スライド 10 の箇条書きの崩れを修正。
+  - スライド 11 の "reduces principal risk" を "In these models, Atomic PvP removes the one-leg-only state" に変更（Day 17 で Brief から削った表現）。
+  - スライド 1 のメモの閉じ忘れ（`-->` なし）を修正。
+- 検査（`integrity-checker`）:
+  - 約 40 個を CSV で再計算して照合。不一致 0、高 0。
+  - 中 4 件を修正: H4b の但し書きなし、H4b の説明に delay がない、H2 の 13,792,920.307 が「gap at 300 s minus gap at 0 s」と書かれていない、スライド 10 の "A 0" が誤解を招く。
+  - 低 6 件も修正: 丸めの注記、[CLS-4]・BOJ-7 の出典の印、C の 0 を correctness check と明記、F6 の min-max の注記、H4b の指標名。
+  - 低 L6（発表者名）はユーザーの決定どおり。
+  - 修正後の再検査はしていない。
+- 検査（`reviewer`）:
+  - 高 2 件: 横のはみ出しを検出しない。コメントとコードフェンスの組み合わせでスライドが黙って消える。
+  - 中 4 件: 閉じていないコメントでメモが HTML に混入、PDF 本文でのメモの検査なし、setext 見出し、フッターとの重なりを検出しない。
+  - `sim-engineer` が 1 回の走査（状態機械）での分割、閉じていないコメントのエラー、縦・横・フッター重なりの検出、画像の decode 待ち、テスト追加で対応。
+  - 6 種類の改変（ページ数ガード削除、縦 / 横 / フッター検出削除、`~~~` 対応削除、`os.replace` を直接書き込みに）がそれぞれテストで検知されることをコピー上で確認。
+  - 修正後の `reviewer` の再レビューはしていない。
+- 完了（README、Claude）: Status 行、Outputs so far、Project status 表に slides を追加。
+- PDF: 12 ページ。メモは 1,737 語（スライド 06 を除き約 11.8 分 + デモ 3 分 ≈ 14.8 分。声に出しての計測はまだ）。
+- pytest: 1481 passed（+27）。`scripts/precommit_check.sh` 問題なし。
+- 未完了 / 既知の制限:
+  - 図 F7・F6・F2 の上部の小さい説明文（条件・seed）はスライドではほぼ読めない（軸と線は読める。条件はスライドのキャプションにある）。図の作り直しは範囲外としたので、Day 19 にユーザーと相談。
+  - スライド 12 の GitHub URL は公開時に確認（`git remote` とは一致）。
+  - ユーザーの目視確認: `open presentation/slides.pdf`、および Day 16・17 の report / brief の PDF。
+- 次の日（Day 19）: 約 3 分のデモ台本と英語の発表原稿、デモ失敗時の予備（スクリーンショット）、通しで時間を測る。
